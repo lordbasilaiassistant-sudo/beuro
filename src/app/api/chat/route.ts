@@ -1,14 +1,18 @@
 // ============================================================
-// GrokBok clone — POST /api/chat
+// GrokBok — POST /api/chat
 // Body is a SendChatInput (new user message → bot replies with activity)
 // or an ApprovalInput (approve/reject a pending message → follow-up).
 // Discriminated by the presence of `decision`.
+// Everything is scoped to the signed-in user's workspace, and bots are
+// briefed on the user's REAL context: their name, company and the tools
+// they connected (Connections), so they work on actual company matters.
 // All LLM failures fall back to canned responses — this route never 500s
 // because of the model.
 // ============================================================
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson, parseActivity, parseMemoryUpdates } from '@/lib/grokbok-llm'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
 import type { ActivityStep } from '@/lib/grokbok-types'
@@ -24,6 +28,12 @@ interface LLMEntry {
   memoryUpdates?: unknown
   needsApproval?: unknown
   approvalNote?: unknown
+}
+
+interface WorkspaceContext {
+  ownerName: string
+  company: string
+  connectedTools: { name: string; type: string; notes: string }[]
 }
 
 interface BotContext {
@@ -73,10 +83,29 @@ const REJECTED_FALLBACK = {
 
 // ---------- prompt builders ----------
 
-function botSystemPrompt(bot: BotContext, teammates?: { name: string; role: string }[]): string {
+function workspaceBrief(ws: WorkspaceContext): string {
+  const who = ws.company ? `${ws.ownerName} at ${ws.company}` : ws.ownerName
+  const tools =
+    ws.connectedTools.length > 0
+      ? ws.connectedTools
+          .map((t) => `${t.name} (${t.type}${t.notes ? ` — ${t.notes}` : ''})`)
+          .join(', ')
+      : 'none connected yet — if a task needs a tool that is not connected, say so plainly and suggest connecting it instead of pretending'
+  return (
+    `You work for ${who}. This is their real company — treat every task as real work with real consequences. ` +
+    `Connected tools on your computer: ${tools}.`
+  )
+}
+
+function botSystemPrompt(
+  bot: BotContext,
+  ws: WorkspaceContext,
+  teammates?: { name: string; role: string }[],
+): string {
   const memoryText = bot.memories.length ? bot.memories.join(' | ') : 'none yet'
   let prompt =
     `You are ${bot.name}, a ${bot.role} AI teammate in GrokBok. Persona: ${bot.persona}. ` +
+    `${workspaceBrief(ws)} ` +
     `Your memories: ${memoryText}. ` +
     `You have your own cloud computer, can sign into the user's tools, and work end-to-end. ` +
     `You reply like a competent colleague: concise, specific, friendly. Never mention you are an LLM.`
@@ -90,7 +119,7 @@ function botSystemPrompt(bot: BotContext, teammates?: { name: string; role: stri
   return prompt
 }
 
-function groupSystemPrompt(bots: BotContext[]): string {
+function groupSystemPrompt(bots: BotContext[], ws: WorkspaceContext): string {
   const roster = bots
     .map((b) => {
       const memoryText = b.memories.length ? b.memories.join(' | ') : 'none yet'
@@ -99,6 +128,7 @@ function groupSystemPrompt(bots: BotContext[]): string {
     .join('\n')
   return (
     'You operate a team of AI teammates in GrokBok. Every bot has its own cloud computer, signs into the user\'s tools, and works end-to-end. ' +
+    `${workspaceBrief(ws)}\n` +
     'Each bot replies like a competent colleague: concise, specific, friendly. Never mention LLMs.\n' +
     `Team roster:\n${roster}\n` +
     'In group chats the bots coordinate and hand work to each other sequentially, like colleagues in one room.'
@@ -109,6 +139,9 @@ function groupSystemPrompt(bots: BotContext[]): string {
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionUser(req)
+    if (!session) return unauthorized()
+
     const body: unknown = await req.json().catch(() => null)
     if (body === null || typeof body !== 'object') {
       return NextResponse.json({ error: 'Invalid JSON body' }, { status: 400 })
@@ -116,18 +149,44 @@ export async function POST(req: Request) {
     const payload = body as Record<string, unknown>
 
     if (payload.decision !== undefined && payload.decision !== null) {
-      return handleApproval(payload)
+      return handleApproval(payload, session.id)
     }
-    return handleSend(payload)
+    return handleSend(payload, session.id)
   } catch (error) {
     console.error('[api/chat] POST failed:', error)
     return NextResponse.json({ error: 'Chat request failed' }, { status: 500 })
   }
 }
 
+/** Load the owner's name, company and connected tools for bot briefings. */
+async function loadWorkspace(userId: string): Promise<WorkspaceContext> {
+  const [user, connections] = await Promise.all([
+    db.user.findUnique({ where: { id: userId }, select: { name: true, company: true } }),
+    db.connection.findMany({ where: { userId }, orderBy: { createdAt: 'asc' } }),
+  ])
+  return {
+    ownerName: user?.name.split(' ')[0] ?? user?.name ?? 'the user',
+    company: user?.company ?? '',
+    connectedTools: connections.map((c) => {
+      let notes = ''
+      try {
+        const parsed: unknown = JSON.parse(c.config)
+        if (parsed && typeof parsed === 'object' && 'notes' in parsed) {
+          notes = typeof (parsed as { notes?: unknown }).notes === 'string'
+            ? ((parsed as { notes: string }).notes as string).slice(0, 80)
+            : ''
+        }
+      } catch {
+        /* config parse failure → no notes */
+      }
+      return { name: c.name, type: c.type, notes }
+    }),
+  }
+}
+
 // ---------- Send flow ----------
 
-async function handleSend(payload: Record<string, unknown>) {
+async function handleSend(payload: Record<string, unknown>, userId: string) {
   const threadId = typeof payload.threadId === 'string' ? payload.threadId.trim() : ''
   const content = typeof payload.content === 'string' ? payload.content.trim() : ''
   if (!threadId) return NextResponse.json({ error: 'threadId is required' }, { status: 400 })
@@ -137,7 +196,9 @@ async function handleSend(payload: Record<string, unknown>) {
     where: { id: threadId },
     include: { messages: { orderBy: { createdAt: 'asc' } } },
   })
-  if (!thread) return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+  if (!thread || thread.userId !== userId) {
+    return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+  }
 
   const botIds = parseJsonArray<string>(thread.botIds).filter((id) => id.length > 0)
   if (botIds.length === 0) {
@@ -145,7 +206,7 @@ async function handleSend(payload: Record<string, unknown>) {
   }
 
   const botRows = await db.bot.findMany({
-    where: { id: { in: botIds } },
+    where: { id: { in: botIds }, userId },
     include: { memories: { orderBy: { createdAt: 'desc' }, take: 8 } },
   })
   const botsById = new Map(botRows.map((b) => [b.id, b]))
@@ -156,6 +217,8 @@ async function handleSend(payload: Record<string, unknown>) {
   if (orderedBots.length === 0) {
     return NextResponse.json({ error: 'Thread members no longer exist' }, { status: 400 })
   }
+
+  const ws = await loadWorkspace(userId)
 
   // 1. Save the user message.
   const now = Date.now()
@@ -179,8 +242,8 @@ async function handleSend(payload: Record<string, unknown>) {
 
   const isGroupTurn = thread.isGroup && orderedBots.length > 1
   const replies = isGroupTurn
-    ? await groupTurn(orderedBots, historyText, content)
-    : [await dmTurn(orderedBots[0], historyText, content)]
+    ? await groupTurn(orderedBots, ws, historyText, content)
+    : [await dmTurn(orderedBots[0], ws, historyText, content)]
 
   // 4. Persist bot messages (in reply order) + memories.
   const savedRows = []
@@ -248,17 +311,22 @@ function fallbackEntry(botId: string): NormalizedReply {
   }
 }
 
-async function dmTurn(bot: BotContext, historyText: string, content: string): Promise<NormalizedReply> {
-  const system = botSystemPrompt(bot)
+async function dmTurn(
+  bot: BotContext,
+  ws: WorkspaceContext,
+  historyText: string,
+  content: string,
+): Promise<NormalizedReply> {
+  const system = botSystemPrompt(bot, ws)
   const history = historyText ? `${historyText}\n\n` : ''
   const user = `${history}The user just said: ${content}
 
 Respond with STRICT JSON only — no markdown, no commentary — exactly this shape:
 {"activity":[{"kind":"signin","text":"..."}],"reply":"...","memoryUpdates":[],"needsApproval":false,"approvalNote":""}
 Rules:
-- "activity": 4-7 short steps of the work you are doing right now on your own cloud computer. Be concrete and reference real tool names like Gmail, Zendesk, Notion, Slack, CRM.
+- "activity": 4-7 short steps of the work you are doing right now on your own cloud computer. Be concrete and reference the user's actual connected tools where relevant.
 - "reply": your answer in a competent teammate voice, 1-4 sentences, referencing the concrete work.
-- "memoryUpdates": 0-3 short durable facts worth remembering about the user, accounts, or preferences (empty array if none).
+- "memoryUpdates": 0-3 short durable facts worth remembering about the user, their company, accounts, or preferences (empty array if none).
 - Approval policy — set "needsApproval": true whenever the request involves ANY of: sending email/DMs/Slack messages to other people, spending or wiring money, publishing or posting externally, signing or sending contracts, deleting data, or making hiring decisions. In that case: do NOT claim you already did it — your activity steps must END with preparing the draft/action (e.g. {"kind":"write","text":"Draft ready — 40 recipients lined up"}), and your reply says it is ready and waiting for their sign-off. "approvalNote": one short line describing the pending action.
 - Set "needsApproval": false only for internal, read-only, or reversible work (research, summaries, drafting for review, organizing, scheduling drafts). Then complete it fully and say it's done.`
 
@@ -272,8 +340,13 @@ Rules:
   }
 }
 
-async function groupTurn(bots: BotContext[], historyText: string, content: string): Promise<NormalizedReply[]> {
-  const system = groupSystemPrompt(bots)
+async function groupTurn(
+  bots: BotContext[],
+  ws: WorkspaceContext,
+  historyText: string,
+  content: string,
+): Promise<NormalizedReply[]> {
+  const system = groupSystemPrompt(bots, ws)
   const history = historyText ? `${historyText}\n\n` : ''
   const user = `${history}The user just said: ${content}
 
@@ -283,7 +356,7 @@ Rules:
 - "replies": 1-3 entries in logical hand-off order (e.g. the coordinator triages first, then a specialist picks up the work). Each "botId" must be one of: ${bots
     .map((b) => `"${b.id}" (${b.name})`)
     .join(', ')}.
-- Per entry: "activity" is 4-7 concrete steps that bot does on its own computer, referencing real tool names like Gmail, Zendesk, Notion, Slack, CRM; "reply" is 1-3 sentences in that bot's voice picking up where the previous bot left off; "memoryUpdates" is 0-3 durable facts.
+- Per entry: "activity" is 4-7 concrete steps that bot does on its own computer, referencing the user's actual connected tools where relevant; "reply" is 1-3 sentences in that bot's voice picking up where the previous bot left off; "memoryUpdates" is 0-3 durable facts.
 - Approval policy — an entry sets "needsApproval": true whenever its work involves sending email/DMs to other people, spending or wiring money, publishing externally, signing contracts, deleting data, or hiring decisions; in that case the activity must END with the prepared draft/action (never claim it was sent/spent) and the reply says it's waiting for sign-off. "approvalNote" describes the pending action. Internal/read-only/reversible work completes fully with "needsApproval": false.`
 
   const validBotIds = new Set(bots.map((b) => b.id))
@@ -377,7 +450,7 @@ function closeOpenStructuresSafe(s: string): string {
 
 // ---------- Approval flow ----------
 
-async function handleApproval(payload: Record<string, unknown>) {
+async function handleApproval(payload: Record<string, unknown>, userId: string) {
   const threadId = typeof payload.threadId === 'string' ? payload.threadId.trim() : ''
   const messageId = typeof payload.messageId === 'string' ? payload.messageId.trim() : ''
   const decision =
@@ -389,6 +462,11 @@ async function handleApproval(payload: Record<string, unknown>) {
     return NextResponse.json({ error: "decision must be 'approved' or 'rejected'" }, { status: 400 })
   }
 
+  const thread = await db.thread.findUnique({ where: { id: threadId } })
+  if (!thread || thread.userId !== userId) {
+    return NextResponse.json({ error: 'Thread not found' }, { status: 404 })
+  }
+
   const message = await db.message.findUnique({ where: { id: messageId } })
   if (!message || message.threadId !== threadId) {
     return NextResponse.json({ error: 'Message not found in this thread' }, { status: 404 })
@@ -397,8 +475,8 @@ async function handleApproval(payload: Record<string, unknown>) {
     return NextResponse.json({ error: 'Only bot messages can be approved' }, { status: 400 })
   }
 
-  const botRow = await db.bot.findUnique({
-    where: { id: message.botId },
+  const botRow = await db.bot.findFirst({
+    where: { id: message.botId, userId },
     include: { memories: { orderBy: { createdAt: 'desc' }, take: 8 } },
   })
   if (!botRow) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
@@ -409,12 +487,13 @@ async function handleApproval(payload: Record<string, unknown>) {
     persona: botRow.persona,
     memories: botRow.memories.map((m) => m.content),
   }
+  const ws = await loadWorkspace(userId)
 
   // 1. Record the decision.
   await db.message.update({ where: { id: message.id }, data: { approvalStatus: decision } })
 
   // 2. Bot posts a follow-up showing the outcome.
-  const plan = await buildFollowUpPlan(bot, message.content, message.approvalNote, decision)
+  const plan = await buildFollowUpPlan(bot, ws, message.content, message.approvalNote, decision)
   const followUp = await db.message.create({
     data: {
       threadId,
@@ -437,11 +516,12 @@ async function handleApproval(payload: Record<string, unknown>) {
 
 async function buildFollowUpPlan(
   bot: BotContext,
+  ws: WorkspaceContext,
   originalContent: string,
   approvalNote: string,
   decision: 'approved' | 'rejected',
 ): Promise<{ activity: ActivityStep[]; reply: string }> {
-  const system = botSystemPrompt(bot)
+  const system = botSystemPrompt(bot, ws)
   const note = approvalNote || originalContent.slice(0, 200)
   const user =
     decision === 'approved'

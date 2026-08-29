@@ -7,7 +7,7 @@
 
 import { useState } from 'react'
 import { formatDistanceToNow } from 'date-fns'
-import { Plus, Users } from 'lucide-react'
+import { KeyRound, Plus, Users } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { ScrollArea } from '@/components/ui/scroll-area'
 import type { Bot, BotStatus } from '@/lib/grokbok-types'
@@ -48,9 +48,11 @@ const STATUS_LABEL: Record<BotStatus, string> = {
 export function Sidebar({
   store,
   onNavigate,
+  onOpenConnections,
 }: {
   store: GrokbokStore
   onNavigate?: () => void
+  onOpenConnections?: () => void
 }) {
   const [newBotOpen, setNewBotOpen] = useState(false)
   const [newThreadOpen, setNewThreadOpen] = useState(false)
@@ -167,6 +169,22 @@ export function Sidebar({
 
       {/* Footer actions */}
       <div className="flex shrink-0 flex-col gap-2 border-t border-zinc-800 p-3">
+        <Button
+          variant="ghost"
+          onClick={() => {
+            onOpenConnections?.()
+            onNavigate?.()
+          }}
+          className="w-full justify-start gap-2 text-sm text-zinc-400 hover:bg-zinc-900 hover:text-white"
+        >
+          <KeyRound className="size-4" />
+          Connections
+          {store.state && store.state.connections.length > 0 && (
+            <span className="ml-auto text-[10px] text-zinc-600">
+              {store.state.connections.length}
+            </span>
+          )}
+        </Button>
         <Button
           variant="outline"
           onClick={() => setNewBotOpen(true)}

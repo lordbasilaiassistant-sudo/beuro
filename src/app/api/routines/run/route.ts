@@ -1,11 +1,12 @@
 // ============================================================
-// GrokBok clone — POST /api/routines/run
+// GrokBok — POST /api/routines/run
 // A bot executes one of its routines "now" and posts a run report
-// (activity feed + reply) into its DM thread.
+// (activity feed + reply) into its DM thread. Owner-scoped.
 // ============================================================
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson, parseActivity } from '@/lib/grokbok-llm'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
 import type { ActivityStep, RunRoutineInput } from '@/lib/grokbok-types'
@@ -40,12 +41,14 @@ function cannedReport(title: string, steps: string[]): RunReport {
 
 async function generateRunReport(
   bot: { name: string; role: string; persona: string },
+  ownerContext: string,
   routineTitle: string,
   schedule: string,
   steps: string[],
 ): Promise<RunReport> {
   const system =
     `You are ${bot.name}, a ${bot.role} AI teammate in GrokBok. Persona: ${bot.persona}. ` +
+    `${ownerContext} ` +
     `You have your own cloud computer, sign into the user's tools, and work end-to-end. ` +
     `You report like a competent colleague: concise, specific, friendly. Never mention you are an LLM.`
 
@@ -74,30 +77,55 @@ Rules:
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionUser(req)
+    if (!session) return unauthorized()
+
     const body = (await req.json().catch(() => ({}))) as Partial<RunRoutineInput>
     const routineId = typeof body.routineId === 'string' ? body.routineId.trim() : ''
     if (!routineId) return NextResponse.json({ error: 'routineId is required' }, { status: 400 })
 
-    const routine = await db.routine.findUnique({ where: { id: routineId } })
-    if (!routine) return NextResponse.json({ error: 'Routine not found' }, { status: 404 })
+    const routine = await db.routine.findUnique({
+      where: { id: routineId },
+      include: { bot: true },
+    })
+    if (!routine || routine.bot.userId !== session.id) {
+      return NextResponse.json({ error: 'Routine not found' }, { status: 404 })
+    }
+    const bot = routine.bot
 
-    const bot = await db.bot.findUnique({ where: { id: routine.botId } })
-    if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+    // Owner + connected tools brief, same as chat.
+    const [user, connections] = await Promise.all([
+      db.user.findUnique({ where: { id: session.id }, select: { name: true, company: true } }),
+      db.connection.findMany({ where: { userId: session.id }, orderBy: { createdAt: 'asc' } }),
+    ])
+    const ownerName = user?.name.split(' ')[0] ?? user?.name ?? 'the user'
+    const company = user?.company ?? ''
+    const ownerContext = connections.length
+      ? `You work for ${company ? `${ownerName} at ${company}` : ownerName}. Connected tools on your computer: ${connections.map((c) => c.name).join(', ')}.`
+      : `You work for ${company ? `${ownerName} at ${company}` : ownerName}.`
 
-    // Find or create the bot's single-bot DM thread (title = bot name).
-    const candidateThreads = await db.thread.findMany({ where: { isGroup: false } })
+    // Find or create the bot's single-bot DM thread (title = bot name), owner-scoped.
+    const candidateThreads = await db.thread.findMany({
+      where: { userId: session.id, isGroup: false },
+    })
     const dmThread =
       candidateThreads.find((t) => {
         const ids = parseJsonArray<string>(t.botIds)
         return ids.length === 1 && ids[0] === bot.id
       }) ??
       (await db.thread.create({
-        data: { title: bot.name, isGroup: false, botIds: JSON.stringify([bot.id]) },
+        data: {
+          userId: session.id,
+          title: bot.name,
+          isGroup: false,
+          botIds: JSON.stringify([bot.id]),
+        },
       }))
 
     const steps = parseJsonArray<string>(routine.steps)
     const report = await generateRunReport(
       { name: bot.name, role: bot.role, persona: bot.persona },
+      ownerContext,
       routine.title,
       routine.schedule,
       steps,

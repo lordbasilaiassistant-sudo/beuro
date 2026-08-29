@@ -1,5 +1,6 @@
-// GrokBok clone — Prisma schema
-// A clone of Grok Bot (xAI, Aug 2026): AI teammates that finish the work.
+// GrokBok — Prisma schema
+// Real product: every account (User) owns its own bots, chats, memories,
+// routines and tool connections. No shared or demo data.
 
 generator client {
   provider = "prisma-client-js"
@@ -10,8 +11,32 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+model User {
+  id           String       @id @default(cuid())
+  email        String       @unique
+  name         String
+  company      String       @default("")
+  passwordHash String
+  bots         Bot[]
+  threads      Thread[]
+  connections  Connection[]
+  createdAt    DateTime     @default(now())
+}
+
+model Connection {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name      String
+  type      String   @default("api_key") // api_key | webhook | email | database | custom
+  config    String   @default("{}") // JSON string: { value?, url?, notes? }
+  createdAt DateTime @default(now())
+}
+
 model Bot {
   id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   name      String
   role      String
   emoji     String    @default("🤖")
@@ -24,6 +49,8 @@ model Bot {
 
 model Thread {
   id        String    @id @default(cuid())
+  userId    String
+  user      User      @relation(fields: [userId], references: [id], onDelete: Cascade)
   title     String
   isGroup   Boolean   @default(false)
   botIds    String    @default("[]") // JSON string[] of bot ids
@@ -51,7 +78,7 @@ model Memory {
   botId     String
   bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
   content   String
-  source    String   @default("chat") // chat | teaching | seed
+  source    String   @default("chat") // chat | teaching | user
   createdAt DateTime @default(now())
 }
 

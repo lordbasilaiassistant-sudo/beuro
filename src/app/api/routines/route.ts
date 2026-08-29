@@ -1,11 +1,13 @@
 // ============================================================
-// GrokBok clone — /api/routines
+// GrokBok — /api/routines
 // POST: LLM turns a free-form description into { title, schedule, steps }
 // PATCH: enable/disable a routine
+// Both scoped to the signed-in user's bots.
 // ============================================================
 
 import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
+import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson } from '@/lib/grokbok-llm'
 import { toRoutine } from '@/lib/grokbok-serialize'
 import type { CreateRoutineInput, ToggleRoutineInput } from '@/lib/grokbok-types'
@@ -35,11 +37,14 @@ function cannedPlan(description: string): RoutinePlan {
   }
 }
 
-async function generateRoutinePlan(description: string): Promise<RoutinePlan> {
+async function generateRoutinePlan(
+  botName: string,
+  description: string,
+): Promise<RoutinePlan> {
   try {
     const raw = await callLLM(
       'You design recurring workflows for AI teammates in GrokBok. Respond with STRICT JSON only — no markdown, no commentary.',
-      `Turn this description into a routine a bot can run on a schedule. Description: "${description}".
+      `Turn this description into a routine the bot "${botName}" can run on a schedule. Description: "${description}".
 
 Respond exactly in this shape:
 {"title":"...","schedule":"...","steps":["..."]}
@@ -71,6 +76,9 @@ Respond exactly in this shape:
 
 export async function POST(req: Request) {
   try {
+    const session = await getSessionUser(req)
+    if (!session) return unauthorized()
+
     const body = (await req.json().catch(() => ({}))) as Partial<CreateRoutineInput>
     const botId = typeof body.botId === 'string' ? body.botId.trim() : ''
     const description = typeof body.description === 'string' ? body.description.trim() : ''
@@ -79,10 +87,10 @@ export async function POST(req: Request) {
       return NextResponse.json({ error: 'description is required' }, { status: 400 })
     }
 
-    const bot = await db.bot.findUnique({ where: { id: botId } })
+    const bot = await db.bot.findFirst({ where: { id: botId, userId: session.id } })
     if (!bot) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
 
-    const plan = await generateRoutinePlan(description)
+    const plan = await generateRoutinePlan(bot.name, description)
     const routine = await db.routine.create({
       data: {
         botId,
@@ -91,7 +99,7 @@ export async function POST(req: Request) {
         steps: JSON.stringify(plan.steps),
       },
     })
-    return NextResponse.json({ routine: toRoutine(routine) })
+    return NextResponse.json({ routine: toRoutine(routine) }, { status: 201 })
   } catch (error) {
     console.error('[api/routines] POST failed:', error)
     return NextResponse.json({ error: 'Failed to create routine' }, { status: 500 })
@@ -100,6 +108,9 @@ export async function POST(req: Request) {
 
 export async function PATCH(req: Request) {
   try {
+    const session = await getSessionUser(req)
+    if (!session) return unauthorized()
+
     const body = (await req.json().catch(() => ({}))) as Partial<ToggleRoutineInput>
     const id = typeof body.id === 'string' ? body.id.trim() : ''
     if (!id) return NextResponse.json({ error: 'id is required' }, { status: 400 })
@@ -107,8 +118,13 @@ export async function PATCH(req: Request) {
       return NextResponse.json({ error: 'enabled must be a boolean' }, { status: 400 })
     }
 
-    const existing = await db.routine.findUnique({ where: { id } })
-    if (!existing) return NextResponse.json({ error: 'Routine not found' }, { status: 404 })
+    const existing = await db.routine.findUnique({
+      where: { id },
+      include: { bot: { select: { userId: true } } },
+    })
+    if (!existing || existing.bot.userId !== session.id) {
+      return NextResponse.json({ error: 'Routine not found' }, { status: 404 })
+    }
 
     const routine = await db.routine.update({ where: { id }, data: { enabled: body.enabled } })
     return NextResponse.json({ routine: toRoutine(routine) })

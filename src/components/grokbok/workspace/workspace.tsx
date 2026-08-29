@@ -4,18 +4,28 @@
 // Workspace shell — full-height app, no page scrolling.
 // lg+: [Sidebar | ChatPanel | ComputerPane]
 // below lg: sidebar in a Sheet, below xl: Computer in a Sheet.
+// Top bar: account menu (sign out) + Connections + New Bot.
 // ============================================================
 
 import { useEffect, useState } from 'react'
-import { Loader2, Menu, Plus, RotateCcw } from 'lucide-react'
+import { KeyRound, Loader2, LogOut, Menu, Plus, RotateCcw } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Sheet, SheetContent, SheetTitle } from '@/components/ui/sheet'
 import { useGrokbok } from './use-grokbok'
 import type { GrokbokStore } from './use-grokbok'
 import { Sidebar } from './sidebar'
 import { ChatPanel } from './chat-panel'
 import { ComputerPane } from './computer-pane'
+import { ConnectionsDialog } from './connections-dialog'
 import { NewBotDialog } from './new-bot-dialog'
 
 export function Workspace({ onHome }: { onHome?: () => void }) {
@@ -23,13 +33,16 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
   const [navOpen, setNavOpen] = useState(false)
   const [computerOpen, setComputerOpen] = useState(false)
   const [newBotOpen, setNewBotOpen] = useState(false)
+  const [connectionsOpen, setConnectionsOpen] = useState(false)
+
+  const { state, refresh, stopSimulations } = store
 
   useEffect(() => {
-    if (!store.state) void store.refresh()
-    return () => store.stopSimulations()
-  }, [store.state, store.refresh, store.stopSimulations])
+    if (!state) void refresh()
+    return () => stopSimulations()
+  }, [state, refresh, stopSimulations])
 
-  if (!store.state) {
+  if (!state) {
     return (
       <div className="flex h-dvh flex-col items-center justify-center gap-3 bg-black text-zinc-100">
         {store.error ? (
@@ -47,13 +60,24 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
           <>
             <Loader2 className="size-5 animate-spin text-zinc-500" />
             <p className="text-[11px] uppercase tracking-widest text-zinc-600">
-              Booting your bots…
+              Booting your workspace…
             </p>
           </>
         )}
       </div>
     )
   }
+
+  const me = store.me
+  const initials = me
+    ? me.name
+        .split(' ')
+        .map((p) => p[0])
+        .slice(0, 2)
+        .join('')
+        .toUpperCase()
+    : '·'
+  const connectionCount = state.connections.length
 
   return (
     <div className="flex h-dvh flex-col overflow-hidden bg-black text-zinc-100">
@@ -87,7 +111,19 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
           Early beta
         </Badge>
 
-        <div className="ml-auto">
+        <div className="ml-auto flex items-center gap-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => setConnectionsOpen(true)}
+            className="h-8 gap-1.5 text-zinc-300 hover:bg-zinc-900 hover:text-white"
+          >
+            <KeyRound className="size-4" />
+            <span className="hidden sm:inline">Connections</span>
+            {connectionCount > 0 && (
+              <span className="text-[10px] text-zinc-500">{connectionCount}</span>
+            )}
+          </Button>
           <Button
             variant="ghost"
             size="sm"
@@ -95,8 +131,35 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
             className="h-8 gap-1.5 text-zinc-300 hover:bg-zinc-900 hover:text-white"
           >
             <Plus className="size-4" />
-            New Bot
+            <span className="hidden sm:inline">New Bot</span>
           </Button>
+
+          {/* Account menu */}
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              aria-label="Account menu"
+              className="ml-1 flex size-8 cursor-pointer items-center justify-center rounded-full border border-zinc-700 bg-zinc-900 text-[11px] font-semibold text-zinc-200 transition-colors hover:border-zinc-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-600"
+            >
+              {initials}
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              sideOffset={8}
+              className="w-56 border-zinc-800 bg-zinc-950 text-zinc-100"
+            >
+              <DropdownMenuLabel className="font-normal">
+                <span className="block truncate text-sm text-zinc-100">{me?.name}</span>
+                <span className="block truncate text-xs text-zinc-500">{me?.email}</span>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator className="bg-zinc-800" />
+              <DropdownMenuItem
+                onClick={() => void store.logout()}
+                className="gap-2 text-zinc-300 focus:bg-zinc-900 focus:text-zinc-100"
+              >
+                <LogOut className="size-3.5" /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -107,7 +170,12 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
         </aside>
 
         <section className="flex min-w-0 flex-1 flex-col">
-          <ChatPanel store={store} onToggleComputer={() => setComputerOpen(true)} />
+          <ChatPanel
+            store={store}
+            onToggleComputer={() => setComputerOpen(true)}
+            onOpenConnections={() => setConnectionsOpen(true)}
+            onOpenNewBot={() => setNewBotOpen(true)}
+          />
         </section>
 
         <aside className="hidden w-[360px] shrink-0 border-l border-zinc-800 xl:block">
@@ -123,7 +191,14 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
           className="w-80 border-zinc-800 bg-black p-0 text-zinc-100 sm:max-w-80 [&>button]:text-zinc-500"
         >
           <SheetTitle className="sr-only">Navigation</SheetTitle>
-          <Sidebar store={store} onNavigate={() => setNavOpen(false)} />
+          <Sidebar
+            store={store}
+            onNavigate={() => setNavOpen(false)}
+            onOpenConnections={() => {
+              setNavOpen(false)
+              setConnectionsOpen(true)
+            }}
+          />
         </SheetContent>
       </Sheet>
 
@@ -139,6 +214,11 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
         </SheetContent>
       </Sheet>
 
+      <ConnectionsDialog
+        store={store}
+        open={connectionsOpen}
+        onOpenChange={setConnectionsOpen}
+      />
       <NewBotDialog store={store} open={newBotOpen} onOpenChange={setNewBotOpen} />
     </div>
   )

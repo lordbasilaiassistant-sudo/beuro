@@ -18,8 +18,10 @@ import {
   MessageSquare,
   PanelRight,
   PenLine,
+  Plus,
   SendHorizontal,
   ShieldAlert,
+  Users,
   Wrench,
   X,
 } from 'lucide-react'
@@ -244,9 +246,13 @@ function WorkingRow({ bot, stepText }: { bot: Bot; stepText?: string }) {
 export function ChatPanel({
   store,
   onToggleComputer,
+  onOpenConnections,
+  onOpenNewBot,
 }: {
   store: GrokbokStore
   onToggleComputer?: () => void
+  onOpenConnections?: () => void
+  onOpenNewBot?: () => void
 }) {
   const [draft, setDraft] = useState('')
   const bottomRef = useRef<HTMLDivElement | null>(null)
@@ -448,20 +454,96 @@ export function ChatPanel({
         </>
       ) : (
         /* Empty state — no thread selected */
-        <div className="flex min-h-0 flex-1 items-center justify-center p-6">
-          <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
-            <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950">
-              <MessageSquare className="size-5 text-zinc-400" />
+        <div className="flex min-h-0 flex-1 items-center justify-center overflow-y-auto p-6">
+          {bots.length === 0 ? (
+            /* Fresh workspace onboarding — no bots yet */
+            <div className="w-full max-w-md rounded-2xl border border-zinc-800 bg-zinc-900/40 p-6 sm:p-8">
+              <div className="flex items-center gap-3">
+                <div className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-zinc-800 bg-zinc-950">
+                  <span className="text-base font-bold text-zinc-100">G</span>
+                </div>
+                <div>
+                  <p className="text-sm font-medium text-zinc-100">
+                    Welcome{store.me ? `, ${store.me.name.split(' ')[0]}` : ''} — your workspace
+                    is live
+                  </p>
+                  <p className="text-xs text-zinc-500">Nothing here yet. Build your team:</p>
+                </div>
+              </div>
+              <ol className="mt-5 flex flex-col gap-3">
+                <li className="flex items-start gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-[11px] font-semibold text-zinc-300">
+                    1
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-200">Connect your tools</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                      API keys, inboxes, webhooks — bots sign in and use them like you do.
+                      {store.state && store.state.connections.length > 0 && (
+                        <span className="text-zinc-400">
+                          {' '}
+                          {store.state.connections.length} connected so far.
+                        </span>
+                      )}
+                    </p>
+                    {onOpenConnections && (
+                      <Button
+                        size="sm"
+                        onClick={onOpenConnections}
+                        className="mt-2 h-8 gap-1.5 bg-white text-xs text-black hover:bg-zinc-200"
+                      >
+                        <KeyRound className="size-3.5" /> Open Connections
+                      </Button>
+                    )}
+                  </div>
+                </li>
+                <li className="flex items-start gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-[11px] font-semibold text-zinc-300">
+                    2
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-200">Hire your first Bot</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                      Sales, support, ops — pick a role, it gets its own Computer and works 24/7.
+                    </p>
+                    {onOpenNewBot && (
+                      <Button
+                        size="sm"
+                        onClick={onOpenNewBot}
+                        className="mt-2 h-8 gap-1.5 bg-white text-xs text-black hover:bg-zinc-200"
+                      >
+                        <Plus className="size-3.5" /> New Bot
+                      </Button>
+                    )}
+                  </div>
+                </li>
+                <li className="flex items-start gap-3 rounded-xl border border-zinc-800/80 bg-zinc-950/60 p-3">
+                  <span className="flex size-6 shrink-0 items-center justify-center rounded-full border border-zinc-700 text-[11px] font-semibold text-zinc-300">
+                    3
+                  </span>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm text-zinc-200">Give it real work</p>
+                    <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
+                      Message it like a colleague. It checks in when it needs your call.
+                    </p>
+                  </div>
+                </li>
+              </ol>
             </div>
-            <div>
-              <p className="text-sm font-medium text-zinc-100">
-                Select a Bot or start a group chat
-              </p>
-              <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                Your AI teammates work 24/7 on their own Computer — message them like colleagues.
-              </p>
-            </div>
-            {bots.length > 0 && (
+          ) : (
+            <div className="flex w-full max-w-sm flex-col items-center gap-4 rounded-2xl border border-zinc-800 bg-zinc-900/40 p-8 text-center">
+              <div className="flex size-12 items-center justify-center rounded-2xl border border-zinc-800 bg-zinc-950">
+                <MessageSquare className="size-5 text-zinc-400" />
+              </div>
+              <div>
+                <p className="text-sm font-medium text-zinc-100">
+                  Select a Bot or start a group chat
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-zinc-500">
+                  Your AI teammates work 24/7 on their own Computer — message them like
+                  colleagues.
+                </p>
+              </div>
               <div className="flex flex-wrap justify-center gap-2">
                 {bots.slice(0, 6).map((b) => (
                   <button
@@ -475,8 +557,18 @@ export function ChatPanel({
                   </button>
                 ))}
               </div>
-            )}
-          </div>
+              {onOpenNewBot && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={onOpenNewBot}
+                  className="h-8 gap-1.5 text-xs text-zinc-400 hover:bg-zinc-900 hover:text-zinc-100"
+                >
+                  <Users className="size-3.5" /> New Bot or group chat
+                </Button>
+              )}
+            </div>
+          )}
         </div>
       )}
     </div>

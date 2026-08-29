@@ -14,14 +14,22 @@ import type {
   ActivityStep,
   ApprovalInput,
   AppState,
+  AuthResponse,
+  AuthUser,
   Bot,
   ChatMessage,
+  ConnectionResponse,
+  ConnectionsResponse,
   CreateBotInput,
+  CreateConnectionInput,
   CreateRoutineInput,
   ErrorResponse,
+  LoginInput,
+  MeResponse,
   Routine,
   RunRoutineInput,
   SendChatInput,
+  SignupInput,
   Thread,
   ToggleRoutineInput,
 } from '@/lib/grokbok-types'
@@ -44,21 +52,30 @@ const SIM_LOG_MAX = 7
 // ---------- internal state ----------
 
 interface GrokbokState {
+  me: AuthUser | null
+  authChecked: boolean
   state: AppState | null
   loading: boolean
   error: string | null
   activeThreadId: string | null
   workingBotIds: string[]
   pendingStepsByBot: Record<string, ActivityStep[]>
+  loadMe: () => Promise<void>
+  signup: (input: SignupInput) => Promise<boolean>
+  login: (input: LoginInput) => Promise<boolean>
+  logout: () => Promise<void>
   refresh: () => Promise<void>
   openThread: (threadId: string) => void
   sendMessage: (content: string) => Promise<void>
   decide: (messageId: string, decision: ApprovalInput['decision']) => Promise<void>
   createBot: (input: CreateBotInput) => Promise<boolean>
+  deleteBot: (botId: string) => Promise<boolean>
   createThread: (botIds: string[], title?: string) => Promise<boolean>
   createRoutine: (botId: string, description: string) => Promise<boolean>
   toggleRoutine: (routineId: string, enabled: boolean) => Promise<boolean>
   runRoutine: (routineId: string) => Promise<boolean>
+  addConnection: (input: CreateConnectionInput) => Promise<boolean>
+  deleteConnection: (connectionId: string) => Promise<boolean>
   stopSimulations: () => void
 }
 
@@ -144,12 +161,65 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
   }
 
   return {
+    me: null,
+    authChecked: false,
     state: null,
     loading: false,
     error: null,
     activeThreadId: null,
     workingBotIds: [],
     pendingStepsByBot: {},
+
+    loadMe: async () => {
+      try {
+        const res = await fetch('/api/auth/me')
+        const data = (await res.json().catch(() => null)) as MeResponse | null
+        set({ me: data?.user ?? null, authChecked: true })
+      } catch {
+        set({ me: null, authChecked: true })
+      }
+    },
+
+    signup: async (input) => {
+      try {
+        const data = await apiJson<AuthResponse>('/api/auth/signup', input)
+        set({ me: data.user, state: null, activeThreadId: null })
+        toast.success(`Welcome to GrokBok, ${data.user.name.split(' ')[0]}`)
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not create the account')
+        return false
+      }
+    },
+
+    login: async (input) => {
+      try {
+        const data = await apiJson<AuthResponse>('/api/auth/login', input)
+        set({ me: data.user, state: null, activeThreadId: null })
+        toast.success(`Welcome back, ${data.user.name.split(' ')[0]}`)
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not sign in')
+        return false
+      }
+    },
+
+    logout: async () => {
+      try {
+        await fetch('/api/auth/logout', { method: 'POST' })
+      } catch {
+        /* clear locally regardless */
+      }
+      for (const botId of [...simTimers.keys()]) stopSimulation(botId, true)
+      set({
+        me: null,
+        state: null,
+        activeThreadId: null,
+        workingBotIds: [],
+        pendingStepsByBot: {},
+      })
+      toast.success('Signed out')
+    },
 
     refresh: async () => {
       const isFirstLoad = !get().state
@@ -305,6 +375,56 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
         return true
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Could not create bot')
+        return false
+      }
+    },
+
+    deleteBot: async (botId) => {
+      const bot = get().state?.bots.find((b) => b.id === botId)
+      if (!bot) return false
+      try {
+        const res = await fetch(`/api/bots?id=${encodeURIComponent(botId)}`, { method: 'DELETE' })
+        if (!res.ok) {
+          const data: unknown = await res.json().catch(() => null)
+          throw new Error((data as ErrorResponse | null)?.error ?? 'Could not remove the bot')
+        }
+        await get().refresh()
+        toast.success(`${bot.name} has been removed from your team`)
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not remove the bot')
+        return false
+      }
+    },
+
+    addConnection: async (input) => {
+      try {
+        const data = await apiJson<ConnectionResponse>('/api/connections', input)
+        await get().refresh()
+        toast.success(`${data.connection.name} connected`, {
+          description: 'Your bots can now work with this tool.',
+        })
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not add the connection')
+        return false
+      }
+    },
+
+    deleteConnection: async (connectionId) => {
+      try {
+        const res = await fetch(`/api/connections?id=${encodeURIComponent(connectionId)}`, {
+          method: 'DELETE',
+        })
+        if (!res.ok) {
+          const data: unknown = await res.json().catch(() => null)
+          throw new Error((data as ErrorResponse | null)?.error ?? 'Could not remove the connection')
+        }
+        await get().refresh()
+        toast.success('Connection removed')
+        return true
+      } catch (err) {
+        toast.error(err instanceof Error ? err.message : 'Could not remove the connection')
         return false
       }
     },

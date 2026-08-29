@@ -8,6 +8,28 @@ export type BotStatus = "idle" | "working" | "waiting_approval";
 export type MessageRole = "user" | "bot";
 export type ApprovalStatus = "none" | "pending" | "approved" | "rejected";
 export type ActivityKind = "think" | "signin" | "tool" | "read" | "write" | "done";
+export type ConnectionType = "api_key" | "webhook" | "email" | "database" | "custom";
+
+/** The signed-in account owner (never includes the password hash). */
+export interface AuthUser {
+  id: string;
+  email: string;
+  name: string;
+  company: string;
+  createdAt: string;
+}
+
+/** A tool/account the user connected so bots can work with it. */
+export interface Connection {
+  id: string;
+  userId: string;
+  name: string;
+  type: ConnectionType;
+  /** Value is masked for secrets — the raw value never leaves the server. */
+  maskedValue: string;
+  notes: string;
+  createdAt: string;
+}
 
 /** One line in the bot's "Computer" activity feed. */
 export interface ActivityStep {
@@ -69,13 +91,45 @@ export interface Thread {
   updatedAt: string;
 }
 
-/** GET /api/state → seeds the DB on first call, then returns everything. */
+/** GET /api/state → returns everything owned by the signed-in user. */
 export interface AppState {
   bots: Bot[];
   threads: Thread[];
+  connections: Connection[];
 }
 
 // ---------- Request bodies ----------
+
+/** POST /api/auth/signup */
+export interface SignupInput {
+  email: string;
+  name: string;
+  password: string;
+  company?: string;
+}
+
+/** POST /api/auth/login */
+export interface LoginInput {
+  email: string;
+  password: string;
+}
+
+export interface AuthResponse {
+  user: AuthUser;
+}
+
+/** GET /api/auth/me when signed out */
+export interface MeResponse {
+  user: AuthUser | null;
+}
+
+/** POST /api/connections */
+export interface CreateConnectionInput {
+  name: string;
+  type: ConnectionType;
+  value?: string;
+  notes?: string;
+}
 
 /** POST /api/bots */
 export interface CreateBotInput {
@@ -131,6 +185,14 @@ export interface CreateBotResponse {
 
 export interface CreateThreadResponse {
   thread: Thread;
+}
+
+export interface ConnectionResponse {
+  connection: Connection;
+}
+
+export interface ConnectionsResponse {
+  connections: Connection[];
 }
 
 export interface ChatResponse {

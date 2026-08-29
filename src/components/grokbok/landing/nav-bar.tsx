@@ -17,7 +17,15 @@ const NAV_LINKS = [
 const linkClasses =
   "rounded-sm text-sm text-zinc-400 transition-colors hover:text-zinc-100 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500";
 
-export function NavBar({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }) {
+export function NavBar({
+  onLaunchWorkspace,
+  onSignIn,
+  signedIn = false,
+}: {
+  onLaunchWorkspace: () => void;
+  onSignIn: () => void;
+  signedIn?: boolean;
+}) {
   const [open, setOpen] = useState(false);
 
   return (
@@ -53,17 +61,20 @@ export function NavBar({ onLaunchWorkspace }: { onLaunchWorkspace: () => void })
         </ul>
 
         <div className="hidden items-center gap-2 md:flex">
-          <Button
-            variant="ghost"
-            className="text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-          >
-            Sign in
-          </Button>
+          {!signedIn && (
+            <Button
+              variant="ghost"
+              onClick={onSignIn}
+              className="text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+            >
+              Sign in
+            </Button>
+          )}
           <Button
             onClick={onLaunchWorkspace}
             className="rounded-full bg-white text-black hover:bg-zinc-200"
           >
-            Open Workspace
+            {signedIn ? "Open Workspace" : "Get Started"}
           </Button>
         </div>
 
@@ -97,12 +108,18 @@ export function NavBar({ onLaunchWorkspace }: { onLaunchWorkspace: () => void })
               </a>
             ))}
             <div className="mt-3 flex flex-col gap-2 border-t border-zinc-800/60 pt-4">
-              <Button
-                variant="ghost"
-                className="justify-start text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
-              >
-                Sign in
-              </Button>
+              {!signedIn && (
+                <Button
+                  variant="ghost"
+                  onClick={() => {
+                    setOpen(false);
+                    onSignIn();
+                  }}
+                  className="justify-start text-zinc-300 hover:bg-zinc-800 hover:text-zinc-100"
+                >
+                  Sign in
+                </Button>
+              )}
               <Button
                 onClick={() => {
                   setOpen(false);
@@ -110,7 +127,7 @@ export function NavBar({ onLaunchWorkspace }: { onLaunchWorkspace: () => void })
                 }}
                 className="w-full rounded-full bg-white text-black hover:bg-zinc-200"
               >
-                Open Workspace
+                {signedIn ? "Open Workspace" : "Get Started"}
               </Button>
             </div>
           </div>
