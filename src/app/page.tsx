@@ -14,11 +14,11 @@ import {
 import { AuthPanel, type AuthMode } from "@/components/grokbok/auth";
 import { Workspace, useGrokbok } from "@/components/grokbok/workspace";
 
-type View = "home" | "auth" | "workspace";
+type RequestedView = "home" | "auth" | "workspace";
 
 export default function Home() {
   const store = useGrokbok();
-  const [view, setView] = useState<View>("home");
+  const [requested, setRequested] = useState<RequestedView>("home");
   const [authMode, setAuthMode] = useState<AuthMode>("signup");
 
   // Resolve the session once on first mount.
@@ -26,26 +26,30 @@ export default function Home() {
     if (!store.authChecked) void store.loadMe();
   }, [store.authChecked, store.loadMe]);
 
-  // "Open Workspace" = sign in if needed, then straight in.
+  // Derive the effective view from the request + auth facts (render-time,
+  // no sync effects): signed in on the auth screen → workspace;
+  // signed out in the workspace → landing.
+  let view = requested;
+  if (requested === "auth" && store.me) view = "workspace";
+  if (requested === "workspace" && store.authChecked && !store.me) view = "home";
+
   const openWorkspace = () => {
-    if (store.me) {
-      setView("workspace");
-    } else {
-      setAuthMode("signup");
-      setView("auth");
-    }
+    setAuthMode("signup");
+    setRequested(store.me ? "workspace" : "auth");
   };
 
   const signIn = () => {
     setAuthMode("signin");
-    setView("auth");
+    setRequested("auth");
+  };
+
+  // Sign-out always returns to the public landing.
+  const signOut = () => {
+    void store.logout();
+    setRequested("home");
   };
 
   if (view === "auth") {
-    if (store.me) {
-      // Signed in while on the auth screen → go straight to the workspace.
-      return <Workspace onHome={() => setView("home")} />;
-    }
     if (!store.authChecked) {
       return (
         <div className="flex min-h-dvh items-center justify-center bg-black">
@@ -57,21 +61,13 @@ export default function Home() {
       <AuthPanel
         store={store}
         initialMode={authMode}
-        onBack={() => setView("home")}
+        onBack={() => setRequested("home")}
       />
     );
   }
 
   if (view === "workspace") {
-    if (!store.me) {
-      // Session expired or signed out → back to the gate.
-      return (
-        <div className="flex min-h-dvh items-center justify-center bg-black">
-          <Loader2 className="size-5 animate-spin text-zinc-500" />
-        </div>
-      );
-    }
-    return <Workspace onHome={() => setView("home")} />;
+    return <Workspace onHome={() => setRequested("home")} onSignOut={signOut} />;
   }
 
   return (

@@ -21,10 +21,22 @@ import {
   Plus,
   Repeat,
   Sparkle,
+  UserMinus,
   Wrench,
 } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { Badge } from '@/components/ui/badge'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog'
 import { Button } from '@/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '@/components/ui/collapsible'
 import {
@@ -349,6 +361,7 @@ function RoutinesCard({ store, bot, busy }: { store: GrokbokStore; bot: Bot; bus
 // ---------- main pane ----------
 
 export function ComputerPane({ store }: { store: GrokbokStore }) {
+  const [fireOpen, setFireOpen] = useState(false)
   const thread = store.activeThread
   const bot = thread ? store.botById(thread.botIds[0] ?? '') : undefined
 
@@ -400,10 +413,45 @@ export function ComputerPane({ store }: { store: GrokbokStore }) {
           <div className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-zinc-800 bg-zinc-900 text-base">
             {bot.emoji}
           </div>
-          <div className="min-w-0">
+          <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-zinc-100">{bot.name}</p>
             <p className="truncate text-xs text-zinc-500">{bot.role} · always-on machine</p>
           </div>
+          <AlertDialog open={fireOpen} onOpenChange={setFireOpen}>
+            <AlertDialogTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                aria-label={`Remove ${bot.name} from your team`}
+                disabled={busy}
+                className="size-8 shrink-0 text-zinc-600 hover:bg-zinc-900 hover:text-red-400"
+              >
+                <UserMinus className="size-4" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent className="border-zinc-800 bg-zinc-950 text-zinc-100">
+              <AlertDialogHeader>
+                <AlertDialogTitle className="text-sm">
+                  Remove {bot.name} from your team?
+                </AlertDialogTitle>
+                <AlertDialogDescription className="text-xs leading-relaxed text-zinc-500">
+                  {bot.name} will stop working immediately. Their memories, routines and chat
+                  history will be permanently deleted. This cannot be undone.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter className="gap-2">
+                <AlertDialogCancel className="border-zinc-800 bg-transparent text-zinc-300 hover:bg-zinc-900 hover:text-zinc-100">
+                  Keep them
+                </AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={() => void store.deleteBot(bot.id)}
+                  className="bg-red-600 text-white hover:bg-red-500"
+                >
+                  Remove {bot.name}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </div>
       </div>
 

@@ -49,6 +49,16 @@ const EMOJIS = [
   '🎓',
 ]
 
+/** Quick-start roles so hiring a teammate takes seconds. */
+const ROLE_IDEAS: { role: string; emoji: string }[] = [
+  { role: 'Sales Outbound', emoji: '📈' },
+  { role: 'Talent Scout', emoji: '🔍' },
+  { role: 'Expense Manager', emoji: '🧾' },
+  { role: 'Customer Support', emoji: '📬' },
+  { role: 'Chief of Staff', emoji: '🗂️' },
+  { role: 'Bug Reproduction', emoji: '🐞' },
+]
+
 export function NewBotDialog({
   store,
   open,
@@ -124,6 +134,27 @@ export function NewBotDialog({
               placeholder="e.g. Expense Manager"
               className="border-zinc-800 bg-zinc-900/60 text-sm text-zinc-100 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-600/40"
             />
+            <div className="flex flex-wrap gap-1.5 pt-0.5">
+              {ROLE_IDEAS.map((idea) => (
+                <button
+                  key={idea.role}
+                  type="button"
+                  onClick={() => {
+                    setRole(idea.role)
+                    setEmoji(idea.emoji)
+                  }}
+                  aria-label={`Use role ${idea.role}`}
+                  className={cn(
+                    'cursor-pointer rounded-full border px-2.5 py-1 text-[11px] transition-colors',
+                    role === idea.role
+                      ? 'border-zinc-500 bg-zinc-800 text-zinc-100'
+                      : 'border-zinc-800 bg-transparent text-zinc-500 hover:border-zinc-600 hover:text-zinc-300',
+                  )}
+                >
+                  {idea.emoji} {idea.role}
+                </button>
+              ))}
+            </div>
           </div>
 
           <div className="grid gap-1.5">

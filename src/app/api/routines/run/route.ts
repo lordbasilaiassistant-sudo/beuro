@@ -19,19 +19,19 @@ interface RunReport {
 }
 
 function cannedReport(title: string, steps: string[]): RunReport {
-  const middle = steps
+  const middle: ActivityStep[] = steps
     .slice(0, 4)
-    .map((step) => ({ kind: 'tool' as const, text: `${step}…` }))
-  const activity: ActivityStep[] = [
+    .map((step) => ({ kind: 'tool', text: `${step}…` }))
+  const fallbackMiddle: ActivityStep[] = [
+    { kind: 'read', text: 'Reading the latest context…' },
+    { kind: 'write', text: 'Preparing the deliverable…' },
+  ]
+  const activityAll: ActivityStep[] = [
     { kind: 'signin', text: `Signing in to run "${title}"…` },
-    ...(middle.length > 0
-      ? middle
-      : [
-          { kind: 'read' as const, text: 'Reading the latest context…' },
-          { kind: 'write' as const, text: 'Preparing the deliverable…' },
-        ]),
+    ...(middle.length > 0 ? middle : fallbackMiddle),
     { kind: 'done', text: 'Routine complete — summary posted.' },
-  ].slice(0, 7)
+  ]
+  const activity = activityAll.slice(0, 7)
 
   return {
     activity,

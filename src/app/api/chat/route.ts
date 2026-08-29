@@ -16,6 +16,7 @@ import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson, parseActivity, parseMemoryUpdates } from '@/lib/grokbok-llm'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
 import type { ActivityStep } from '@/lib/grokbok-types'
+import type { Message as MessageRow } from '@prisma/client'
 
 export const runtime = 'nodejs'
 
@@ -246,7 +247,7 @@ async function handleSend(payload: Record<string, unknown>, userId: string) {
     : [await dmTurn(orderedBots[0], ws, historyText, content)]
 
   // 4. Persist bot messages (in reply order) + memories.
-  const savedRows = []
+  const savedRows: MessageRow[] = []
   for (let i = 0; i < replies.length; i++) {
     const reply = replies[i]
     const row = await db.message.create({

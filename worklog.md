@@ -181,3 +181,25 @@ Work Log:
 Stage Summary:
 - SHIPPED: GrokBok clone complete on single / route - marketing landing + fully working AI-teammate workspace (chat w/ LLM bots, cloud-computer activity logs, approval flow, memory that updates itself, teachable routines w/ run-now, custom bot creation, multi-bot group coordination). Dark monochrome xAI aesthetic, no blue/indigo, responsive, accessible. Lint clean; dev.log clean; browser-verified end-to-end.
 - Known limits (by design): routines don't fire on a real cron (Run now demonstrates them); view state resets to landing on reload (single-route constraint); next-themes light mode not exposed (dark-only brand).
+
+---
+Task ID: 6
+Agent: orchestrator (Z.ai Code main)
+Task: Convert GrokBok from demo to real multi-user product — accounts, empty-by-default workspaces, user-created bots, tool connections
+
+Work Log:
+- Prisma: added User (email unique, name, company, scrypt passwordHash) + Connection (name, type api_key|webhook|email|database|custom, config JSON w/ value+notes) models; added userId FK (cascade) to Bot + Thread; force-reset DB (demo data intentionally dropped); regenerated client.
+- src/lib/auth.ts (new): scrypt+salt hashing, HMAC-SHA256 signed session tokens (secret: env AUTH_SECRET or auto-generated db/auth-secret.key), httpOnly SameSite=Lax cookie (30d), getSessionUser, toAuthUser, unauthorized().
+- Routes: /api/auth/{signup,login,logout,me}; signup validates email/password>=8/name, unique email, sets cookie; login case-insensitive email; all data routes now require session + owner checks (state/bots/threads/chat/routines/routines/run) — 401 anon, 404 cross-user. Deleted grokbok-seed.ts; /api/state returns per-user {bots,threads,connections} with NO seeding — new accounts start empty.
+- /api/connections (new): GET masked list, POST (secret stored server-side, maskedValue only ever returned), DELETE owner-scoped; 30-cap.
+- Chat route briefs bots with REAL workspace context: owner name, company, connected tools (names/types/notes) via workspaceBrief() — bots reference actual tools and say when something isn't connected.
+- Store: me/authChecked/loadMe/signup/login/logout (clears all state), addConnection/deleteConnection, deleteBot; AppState now includes connections.
+- UI: AuthPanel (signup w/ optional company + signin, dark monochrome, disabled-until-valid); page.tsx view machine = requested view + render-time auth derivation (auth+me→workspace, workspace+!me→home) — no setState-in-effect; NavBar Sign in/Get Started↔Open Workspace by session; workspace top bar = Connections (count) + New Bot + account initials menu w/ sign out (onSignOut prop → page returns to landing); ConnectionsDialog (add form w/ type select + password input + notes, masked list, confirm-then-remove); ChatPanel fresh-workspace onboarding (3 steps: connect tools → hire bot → give work) when 0 bots; sidebar footer Connections shortcut; ComputerPane UserMinus fire-bot w/ AlertDialog; NewBotDialog 6 quick role chips.
+- Fixed along the way: stale dev-server Prisma client (restart); logout 404 (was POSTed to /api/auth/me — created /api/auth/logout route); sign-out view flip (auth panel instead of landing — solved via onSignOut callback + derived view); react-hooks/set-state-in-effect lint errors (render-time derivation); TS savedRows/cannedReport typing.
+- Verified by curl: signup 201, wrong-password 401, dup email 409, short password 400, logout→me null, anon state 401, empty state {bots:[],threads:[],connections:[]}, cross-user isolation (B cannot see/delete/use A's bots+threads).
+- Verified by agent-browser E2E: landing w/ session-aware CTAs → Get Started → signup (welcome toast) → onboarding empty workspace → add 2 connections (Acme CRM + Support Inbox, masked) → hire Riley via Customer Support chip → DM references REAL "Acme CRM" + respects "drafts only" → teach routine + Run now (report posts to DM) → approval gate on "email the drafts" (amber card, NEEDS YOUR CALL) → Approve → sent+logged follow-up → sign out → landing → login restores everything → mobile 390px (sheet nav, compact top bar, 44px composer) → desktop 3-pane. Lint+tsc clean; dev.log error-free; all test accounts wiped after verification (product ships pristine).
+
+Stage Summary:
+- GrokBok is now a real product: create account → empty workspace → connect company tools → hire custom bots → chat/delegate with approval gates → teach routines. Zero demo data anywhere; every account's data is isolated and owned.
+- Security posture: scrypt hashes, HMAC-signed httpOnly session cookies, owner checks on every mutation, secrets never returned by any API (masked server-side).
+- View machine: landing ⇄ auth ⇄ workspace driven by requested view + session, sign-out always returns to landing.

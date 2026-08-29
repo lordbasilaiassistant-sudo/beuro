@@ -28,7 +28,13 @@ import { ComputerPane } from './computer-pane'
 import { ConnectionsDialog } from './connections-dialog'
 import { NewBotDialog } from './new-bot-dialog'
 
-export function Workspace({ onHome }: { onHome?: () => void }) {
+export function Workspace({
+  onHome,
+  onSignOut,
+}: {
+  onHome?: () => void
+  onSignOut?: () => void
+}) {
   const store: GrokbokStore = useGrokbok()
   const [navOpen, setNavOpen] = useState(false)
   const [computerOpen, setComputerOpen] = useState(false)
@@ -153,7 +159,10 @@ export function Workspace({ onHome }: { onHome?: () => void }) {
               </DropdownMenuLabel>
               <DropdownMenuSeparator className="bg-zinc-800" />
               <DropdownMenuItem
-                onClick={() => void store.logout()}
+                onClick={() => {
+                  if (onSignOut) onSignOut();
+                  else void store.logout();
+                }}
                 className="gap-2 text-zinc-300 focus:bg-zinc-900 focus:text-zinc-100"
               >
                 <LogOut className="size-3.5" /> Sign out
