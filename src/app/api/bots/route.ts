@@ -1,0 +1,74 @@
+// ============================================================
+// GrokBok clone — /api/bots
+// POST: create a bot (LLM may generate the persona when absent)
+// DELETE ?id=: delete a bot (memories + routines cascade)
+// ============================================================
+
+import { NextResponse } from 'next/server'
+import { db } from '@/lib/db'
+import { callLLM } from '@/lib/grokbok-llm'
+import { toBot } from '@/lib/grokbok-serialize'
+import type { CreateBotInput } from '@/lib/grokbok-types'
+
+export const runtime = 'nodejs'
+
+const DEFAULT_PERSONA = 'You are a diligent AI teammate.'
+
+async function generatePersona(name: string, role: string): Promise<string> {
+  try {
+    const raw = await callLLM(
+      'You write short bot personas for GrokBok, a product where AI teammates do real work on their own computers. Output ONLY the persona text — no quotes, no preamble, no markdown.',
+      `Write a 1-2 sentence persona for an AI teammate named "${name}" whose role is "${role}". Cover what it does day-to-day and how it communicates.`,
+      15000,
+    )
+    const cleaned = raw
+      .trim()
+      .replace(/^["'`]+|["'`]+$/g, '')
+      .slice(0, 400)
+      .trim()
+    return cleaned || DEFAULT_PERSONA
+  } catch (error) {
+    console.error('[api/bots] persona LLM failed, using default persona:', error)
+    return DEFAULT_PERSONA
+  }
+}
+
+export async function POST(req: Request) {
+  try {
+    const body = (await req.json().catch(() => ({}))) as Partial<CreateBotInput>
+    const name = typeof body.name === 'string' ? body.name.trim() : ''
+    const role = typeof body.role === 'string' ? body.role.trim() : ''
+    if (!name) return NextResponse.json({ error: 'name is required' }, { status: 400 })
+    if (!role) return NextResponse.json({ error: 'role is required' }, { status: 400 })
+
+    const emoji =
+      typeof body.emoji === 'string' && body.emoji.trim() ? body.emoji.trim().slice(0, 8) : '🤖'
+    const personaInput = typeof body.persona === 'string' ? body.persona.trim() : ''
+    const persona = personaInput || (await generatePersona(name, role))
+
+    const bot = await db.bot.create({
+      data: { name, role, emoji, persona },
+      include: { memories: true, routines: true },
+    })
+    return NextResponse.json({ bot: toBot(bot) })
+  } catch (error) {
+    console.error('[api/bots] POST failed:', error)
+    return NextResponse.json({ error: 'Failed to create bot' }, { status: 500 })
+  }
+}
+
+export async function DELETE(req: Request) {
+  try {
+    const id = new URL(req.url).searchParams.get('id')?.trim() ?? ''
+    if (!id) return NextResponse.json({ error: 'id query param is required' }, { status: 400 })
+
+    const existing = await db.bot.findUnique({ where: { id } })
+    if (!existing) return NextResponse.json({ error: 'Bot not found' }, { status: 404 })
+
+    await db.bot.delete({ where: { id } }) // memories + routines cascade via schema
+    return NextResponse.json({ ok: true })
+  } catch (error) {
+    console.error('[api/bots] DELETE failed:', error)
+    return NextResponse.json({ error: 'Failed to delete bot' }, { status: 500 })
+  }
+}

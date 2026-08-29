@@ -1,0 +1,68 @@
+// GrokBok clone — Prisma schema
+// A clone of Grok Bot (xAI, Aug 2026): AI teammates that finish the work.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model Bot {
+  id        String    @id @default(cuid())
+  name      String
+  role      String
+  emoji     String    @default("🤖")
+  persona   String    @default("")
+  status    String    @default("idle") // idle | working | waiting_approval
+  memories  Memory[]
+  routines  Routine[]
+  createdAt DateTime  @default(now())
+}
+
+model Thread {
+  id        String    @id @default(cuid())
+  title     String
+  isGroup   Boolean   @default(false)
+  botIds    String    @default("[]") // JSON string[] of bot ids
+  messages  Message[]
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+}
+
+model Message {
+  id             String   @id @default(cuid())
+  threadId       String
+  thread         Thread   @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  role           String // user | bot
+  botId          String?
+  content        String
+  activity       String   @default("[]") // JSON ActivityStep[]
+  needsApproval  Boolean  @default(false)
+  approvalStatus String   @default("none") // none | pending | approved | rejected
+  approvalNote   String   @default("")
+  createdAt      DateTime @default(now())
+}
+
+model Memory {
+  id        String   @id @default(cuid())
+  botId     String
+  bot       Bot      @relation(fields: [botId], references: [id], onDelete: Cascade)
+  content   String
+  source    String   @default("chat") // chat | teaching | seed
+  createdAt DateTime @default(now())
+}
+
+model Routine {
+  id        String    @id @default(cuid())
+  botId     String
+  bot       Bot       @relation(fields: [botId], references: [id], onDelete: Cascade)
+  title     String
+  schedule  String
+  steps     String    @default("[]") // JSON string[]
+  enabled   Boolean   @default(true)
+  lastRunAt DateTime?
+  createdAt DateTime  @default(now())
+}
