@@ -259,8 +259,8 @@ Rules:
 - "activity": 4-7 short steps of the work you are doing right now on your own cloud computer. Be concrete and reference real tool names like Gmail, Zendesk, Notion, Slack, CRM.
 - "reply": your answer in a competent teammate voice, 1-4 sentences, referencing the concrete work.
 - "memoryUpdates": 0-3 short durable facts worth remembering about the user, accounts, or preferences (empty array if none).
-- "needsApproval": true ONLY if the user must sign off before you send, spend, or publish anything.
-- "approvalNote": one short line describing the pending action (empty string when needsApproval is false).`
+- Approval policy — set "needsApproval": true whenever the request involves ANY of: sending email/DMs/Slack messages to other people, spending or wiring money, publishing or posting externally, signing or sending contracts, deleting data, or making hiring decisions. In that case: do NOT claim you already did it — your activity steps must END with preparing the draft/action (e.g. {"kind":"write","text":"Draft ready — 40 recipients lined up"}), and your reply says it is ready and waiting for their sign-off. "approvalNote": one short line describing the pending action.
+- Set "needsApproval": false only for internal, read-only, or reversible work (research, summaries, drafting for review, organizing, scheduling drafts). Then complete it fully and say it's done.`
 
   try {
     const raw = await callLLM(system, user)
@@ -284,13 +284,20 @@ Rules:
     .map((b) => `"${b.id}" (${b.name})`)
     .join(', ')}.
 - Per entry: "activity" is 4-7 concrete steps that bot does on its own computer, referencing real tool names like Gmail, Zendesk, Notion, Slack, CRM; "reply" is 1-3 sentences in that bot's voice picking up where the previous bot left off; "memoryUpdates" is 0-3 durable facts.
-- "needsApproval": true ONLY if that bot needs the user's sign-off before sending, spending, or publishing anything; "approvalNote" describes the pending action (empty string otherwise).`
+- Approval policy — an entry sets "needsApproval": true whenever its work involves sending email/DMs to other people, spending or wiring money, publishing externally, signing contracts, deleting data, or hiring decisions; in that case the activity must END with the prepared draft/action (never claim it was sent/spent) and the reply says it's waiting for sign-off. "approvalNote" describes the pending action. Internal/read-only/reversible work completes fully with "needsApproval": false.`
 
   const validBotIds = new Set(bots.map((b) => b.id))
   try {
     const raw = await callLLM(system, user)
-    const parsed = extractJson<{ replies?: unknown }>(raw)
-    const entries: unknown[] = Array.isArray(parsed.replies) ? parsed.replies : []
+    let entries: unknown[] = []
+    try {
+      const parsed = extractJson<{ replies?: unknown }>(raw)
+      entries = Array.isArray(parsed.replies) ? parsed.replies : []
+    } catch {
+      // Whole-object parse failed — salvage individual {"botId": ...} entries instead.
+      entries = salvageReplyObjects(raw)
+      console.warn(`[api/chat] group output failed full parse, salvaged ${entries.length} entries`)
+    }
 
     const normalized = entries
       .filter((e): e is LLMEntry => e !== null && typeof e === 'object')
@@ -303,6 +310,69 @@ Rules:
     console.error('[api/chat] group turn LLM failed, using fallback:', error)
     return [fallbackEntry(bots[0].id)]
   }
+}
+
+/**
+ * Last-resort salvage for malformed group output: carve out top-level objects
+ * that contain a "botId" key and parse each one through the repair pipeline.
+ */
+function salvageReplyObjects(raw: string): unknown[] {
+  const salvaged: unknown[] = []
+  for (let i = raw.indexOf('"botId"'); i !== -1; i = raw.indexOf('"botId"', i + 1)) {
+    const objStart = raw.lastIndexOf('{', i)
+    if (objStart === -1) continue
+    // Walk forward to the matching closing brace (string-aware).
+    let depth = 0
+    let inString = false
+    let escaped = false
+    for (let j = objStart; j < raw.length; j += 1) {
+      const ch = raw[j]
+      if (inString) {
+        if (escaped) escaped = false
+        else if (ch === '\\') escaped = true
+        else if (ch === '"') inString = false
+        continue
+      }
+      if (ch === '"') inString = true
+      else if (ch === '{') depth += 1
+      else if (ch === '}') {
+        depth -= 1
+        if (depth === 0) {
+          try {
+            salvaged.push(JSON.parse(closeOpenStructuresSafe(raw.slice(objStart, j + 1))))
+          } catch {
+            /* skip unparseable entry */
+          }
+          break
+        }
+      }
+    }
+    if (salvaged.length >= 3) break
+  }
+  return salvaged
+}
+
+function closeOpenStructuresSafe(s: string): string {
+  let inString = false
+  let escaped = false
+  const stack: string[] = []
+  for (const ch of s) {
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+  let out = s
+  if (inString) out += '"'
+  out = out.replace(/,\s*$/, '')
+  while (stack.length > 0) out += stack.pop()
+  return out
 }
 
 // ---------- Approval flow ----------

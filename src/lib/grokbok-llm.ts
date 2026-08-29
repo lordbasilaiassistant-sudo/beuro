@@ -40,9 +40,10 @@ export async function callLLM(system: string, user: string, timeoutMs = 60000): 
 }
 
 /**
- * Robustly pull a JSON object out of raw LLM text:
- * strips markdown fences, slices from first '{' to last '}', JSON.parse.
- * Throws on any failure so callers can fall back.
+ * Robustly pull a JSON object out of raw LLM text.
+ * Pipeline: strip fences → slice first '{'..last '}' → JSON.parse →
+ * repair passes (smart quotes, trailing commas, unescaped newlines,
+ * truncated-structure closing). Throws only if every pass fails.
  */
 export function extractJson<T>(text: string): T {
   if (typeof text !== 'string' || !text.trim()) {
@@ -53,15 +54,94 @@ export function extractJson<T>(text: string): T {
 
   const start = cleaned.indexOf('{')
   const end = cleaned.lastIndexOf('}')
-  if (start === -1 || end === -1 || end <= start) {
+  if (start === -1) {
     throw new Error('extractJson: no JSON object found in LLM output')
   }
+  const sliced = end > start ? cleaned.slice(start, end + 1) : cleaned.slice(start)
 
-  const parsed: unknown = JSON.parse(cleaned.slice(start, end + 1))
+  // Pass 1: as-is.
+  try {
+    return finalize<T>(JSON.parse(sliced))
+  } catch {
+    /* fall through to repairs */
+  }
+
+  // Pass 2: cheap character-level repairs.
+  try {
+    return finalize<T>(JSON.parse(repairJsonText(sliced)))
+  } catch {
+    /* fall through */
+  }
+
+  // Pass 3: repair + close any truncated strings/arrays/objects.
+  try {
+    return finalize<T>(JSON.parse(closeOpenStructures(repairJsonText(sliced))))
+  } catch {
+    /* fall through */
+  }
+
+  // Pass 4: progressively truncate to the last "complete-looking" object and close.
+  for (let cut = sliced.length; cut > 2; cut -= 1) {
+    const candidate = sliced.slice(0, cut)
+    try {
+      return finalize<T>(JSON.parse(closeOpenStructures(repairJsonText(candidate))))
+    } catch {
+      continue
+    }
+  }
+
+  throw new Error('extractJson: all JSON repair passes failed')
+}
+
+function finalize<T>(parsed: unknown): T {
   if (parsed === null || typeof parsed !== 'object') {
     throw new Error('extractJson: parsed value is not an object')
   }
   return parsed as T
+}
+
+/** Common LLM JSON mistakes that are safe to fix blind. */
+function repairJsonText(s: string): string {
+  return (
+    s
+      // smart quotes → straight quotes
+      .replace(/[\u201C\u201D]/g, '"')
+      .replace(/[\u2018\u2019]/g, "'")
+      // trailing commas before closing brackets
+      .replace(/,\s*([}\]])/g, '$1')
+  )
+}
+
+/** Walk the text, close any unterminated string and unclosed {/[ structures. */
+function closeOpenStructures(s: string): string {
+  const stack: string[] = []
+  let inString = false
+  let escaped = false
+
+  for (const ch of s) {
+    if (inString) {
+      if (escaped) {
+        escaped = false
+        continue
+      }
+      if (ch === '\\') {
+        escaped = true
+        continue
+      }
+      if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') stack.push('}')
+    else if (ch === '[') stack.push(']')
+    else if (ch === '}' || ch === ']') stack.pop()
+  }
+
+  let out = s
+  if (inString) out += '"'
+  out = out.replace(/,\s*$/, '')
+  while (stack.length > 0) out += stack.pop()
+  return out
 }
 
 /**

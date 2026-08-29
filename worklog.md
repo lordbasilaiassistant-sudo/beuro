@@ -155,3 +155,29 @@ Stage Summary:
 - Exports (src/components/grokbok/workspace/index.ts): `Workspace` (props { onHome?: () => void }) and `useGrokbok()` / `export type GrokbokStore` (internal contract for the 6 child components: { state, loading, error, activeThreadId, workingBotIds, pendingStepsByBot, refresh, openThread, sendMessage, decide, createBot, createThread, createRoutine, toggleRoutine, runRoutine, stopSimulations, activeThread, threadsForSidebar, botById }).
 - Child props (all take `store: GrokbokStore`): Sidebar { store, onNavigate? }, ChatPanel { store, onToggleComputer? }, ComputerPane { store }, NewBotDialog { store, open, onOpenChange, onCreated? }, NewThreadDialog { store, open, onOpenChange, onCreated? }.
 - Integrator: render `<Workspace onHome={() => setView('home')} />` from page.tsx; mount sonner <Toaster /> for action feedback; no other wiring needed — store self-fetches GET /api/state on mount and picks the newest thread. No page-level scroll (h-dvh app shell, internal ScrollAreas); layout is mobile-first (Sheet nav < lg, Sheet Computer < xl).
+
+---
+Task ID: 4 + 5
+Agent: orchestrator (Z.ai Code main)
+Task: Integration, page assembly, end-to-end browser verification, fixes
+
+Work Log:
+- Assembled src/app/page.tsx: 'home' | 'workspace' view state; Landing = NavBar/Hero/Features/BotJobs/Pricing/Testimonials/SiteFooter inside min-h-screen flex flex-col; Workspace gets onHome.
+- Updated layout.tsx: GrokBok metadata (title/description/OG), viewport themeColor #000 + viewportFit cover, body bg-black text-zinc-100, mounted shadcn Sonner Toaster (theme dark, bottom-right).
+- Reset DB to pristine seed (deleted test artifacts from 3-a curl verification); GET /api/state re-seeded 5 bots + 2 threads cleanly.
+- Agent Browser verification (all PASSED):
+  1. Landing: hero + badge + CTAs, features grid, bot-jobs strip w/ animated hand-off chips, pricing 3 tiers, testimonials, footer sticky at page end w/ mt-auto. Fixed nav + anchors OK.
+  2. Workspace boot: 3-pane layout, seeded group chat + Atlas DM, computer logs, memory + routines cards render.
+  3. Golden path chat: DM Atlas -> LLM reply + computer log + Computer pane "LAST RUN <1 min ago". Verified again on custom bot.
+  4. Approval flow (after prompt fix): Atlas prepared $15k wire + 40-stakeholder email, stopped w/ amber approval card + NEEDS YOUR CALL + waiting_approval dots; Approve -> emerald Approved badge + execution follow-up + completion activity; status back to idle.
+  5. Teach a task: dialog validation (Save disabled empty), LLM generated "Morning Standup Check / Every weekday at 9:00 AM / 3 steps"; Run now -> toast "Atlas finished" + run report message + activity + lastRunAt.
+  6. New bot: created "Sage / Paid Media / bar-chart emoji" (BOTS 5->6), DM auto-created, specialist-voiced LLM reply (Google Ads audit).
+  7. Group chat: created "Q4 Budget War Room" (Nova+Ledger+Sage), multi-bot hand-off replies referencing each other, memoryUpdates persisted (Nova memory card grew to 7, chat badges).
+  8. Mobile (390x844): workspace hamburger Sheet nav + Computer Sheet, composer 44px, landing hero + Computer mock responsive; measured shell = viewport exactly (no overflow).
+  9. Back navigation workspace -> landing via wordmark.
+- FIX 1 (behavior): /api/chat approval policy prompt strengthened (DM + group) - external/irreversible actions (send/spend/publish/contracts/deletes/hiring) must pause w/ needsApproval=true and end activity at prepared-draft; internal work completes. Verified triggering reliably.
+- FIX 2 (robustness): group LLM output occasionally malformed JSON (SyntaxError at pos 1819) fell back to canned reply. Added to src/lib/grokbok-llm.ts: multi-pass JSON repair (smart quotes, trailing commas, truncate+close open structures); added per-entry salvage (salvageReplyObjects + closeOpenStructuresSafe) in groupTurn so partial parses win. Post-fix group turn returned 3 real hand-offs (verified via curl + browser). No new errors in dev.log after fix.
+
+Stage Summary:
+- SHIPPED: GrokBok clone complete on single / route - marketing landing + fully working AI-teammate workspace (chat w/ LLM bots, cloud-computer activity logs, approval flow, memory that updates itself, teachable routines w/ run-now, custom bot creation, multi-bot group coordination). Dark monochrome xAI aesthetic, no blue/indigo, responsive, accessible. Lint clean; dev.log clean; browser-verified end-to-end.
+- Known limits (by design): routines don't fire on a real cron (Run now demonstrates them); view state resets to landing on reload (single-route constraint); next-themes light mode not exposed (dark-only brand).
