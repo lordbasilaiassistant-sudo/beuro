@@ -480,7 +480,7 @@ export function ChatPanel({
               </Button>
             </div>
             <p className="mx-auto mt-2 w-full max-w-3xl text-[11px] text-zinc-600">
-              Bots work on their own Computer and ask for approval when needed.
+              Bots cite what they actually opened. Italic steps are described, not verified.
             </p>
           </div>
         </>

@@ -20,9 +20,9 @@ interface Feature {
 const FEATURES: Feature[] = [
   {
     icon: Cpu,
-    title: "A computer of its own",
+    title: "Work you can check",
     description:
-      "Bots share their own machine in the cloud, so jobs don’t stall when you step away. They sign in and work across apps, tools, and websites — even ones with no API.",
+      "A Bot’s log is written by the tools it ran, not by the model. Every step it claims carries the source it came from, so “I looked it up” is something you can click.",
   },
   {
     icon: MessageSquare,

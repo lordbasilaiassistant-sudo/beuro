@@ -452,7 +452,7 @@ export function ComputerPane({ store }: { store: GrokbokStore }) {
           </div>
           <div className="min-w-0 flex-1">
             <p className="truncate text-sm font-medium text-zinc-100">{bot.name}</p>
-            <p className="truncate text-xs text-zinc-500">{bot.role} · always-on machine</p>
+            <p className="truncate text-xs text-zinc-500">{bot.role}</p>
           </div>
           <AlertDialog open={fireOpen} onOpenChange={setFireOpen}>
             <AlertDialogTrigger asChild>

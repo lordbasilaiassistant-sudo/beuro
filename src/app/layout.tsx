@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "GrokBok — AI teammates that finish the work",
   description:
-    "GrokBok is your team of always-on agents. They have their own computer, work inside tools and apps like you do, and keep working 24/7.",
+    "Beuro is your team of AI agents. They search the live web, open real pages, and cite every source — so you can check the work instead of trusting it.",
   keywords: ["GrokBok", "AI teammates", "AI agents", "bots", "automation"],
   icons: {
     icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",

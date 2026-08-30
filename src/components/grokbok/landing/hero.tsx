@@ -18,14 +18,13 @@ import { Button } from "@/components/ui/button";
 import type { ActivityKind } from "@/lib/grokbok-types";
 
 const SUBHEADLINE =
-  "AI teammates you can give real work to. They have their own computer, work inside tools and apps like you do, and keep working 24/7.";
+  "AI teammates you can give real work to. They search the live web, open real pages, and show you every source — so you can check the work instead of trusting it.";
 
 const FEED_STEPS: { kind: ActivityKind; text: string }[] = [
-  { kind: "signin", text: "Signing in to Workspace…" },
-  { kind: "read", text: "Reading overnight updates from 4 bots…" },
-  { kind: "think", text: "Prioritizing 3 items that need you…" },
-  { kind: "write", text: "Drafting your daily brief…" },
-  { kind: "done", text: "Done — brief ready." },
+  { kind: "tool", text: "Searched \"Browser Run pricing\" — 6 results" },
+  { kind: "read", text: "Read developers.cloudflare.com" },
+  { kind: "read", text: "Read blog.cloudflare.com" },
+  { kind: "done", text: "Finished — findings below." },
 ];
 
 const KIND_ICON: Record<ActivityKind, LucideIcon> = {
@@ -101,7 +100,7 @@ export function Hero({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }) {
           >
             Your team of{" "}
             <span className="font-serif italic text-zinc-400">
-              always-on agents.
+              agents that show their work.
             </span>
           </motion.h1>
 
@@ -202,7 +201,7 @@ export function Hero({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }) {
 
             <div className="flex items-center justify-between border-t border-zinc-800/60 px-5 py-3 sm:px-6">
               <span className="font-mono text-[11px] text-zinc-500">
-                5 bots · 3 routines · working 24/7
+                every step traceable to a source
               </span>
               <span className="font-mono text-[11px] text-zinc-600">early beta</span>
             </div>
