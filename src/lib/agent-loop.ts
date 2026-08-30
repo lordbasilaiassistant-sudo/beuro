@@ -126,11 +126,44 @@ On the "answer" action:
   try {
     const parsed = extractJson<Record<string, unknown>>(raw)
     const tool = typeof parsed.tool === 'string' ? parsed.tool.trim() : ''
-    if (!tool) return null
-    return { ...parsed, tool } as ToolCall
+    if (tool) return { ...parsed, tool } as ToolCall
+
+    // Well-formed JSON, wrong envelope. Models reliably produce a few variants
+    // of "I am finished" — {"answer":{...}}, {"answer":"text"}, or a bare
+    // {"reply":"..."} — and rejecting them threw away good answers and showed
+    // canned steps instead. Accept the shapes we actually see.
+    const nested = parsed.answer ?? parsed.result ?? parsed.response
+    if (typeof nested === 'string' && nested.trim()) {
+      return { tool: 'answer', reply: nested.trim() }
+    }
+    if (nested && typeof nested === 'object') {
+      return { ...(nested as Record<string, unknown>), tool: 'answer' } as ToolCall
+    }
+    if (typeof parsed.reply === 'string' && parsed.reply.trim()) {
+      return { ...parsed, tool: 'answer' } as ToolCall
+    }
+
+    // A tool name used as the key: {"web_search":{"query":"…"}}.
+    for (const name of TOOL_BY_NAME.keys()) {
+      const args = parsed[name]
+      if (args && typeof args === 'object') {
+        return { ...(args as Record<string, unknown>), tool: name } as ToolCall
+      }
+    }
   } catch {
-    return null
+    /* not JSON — see below */
   }
+
+  // The model often just *answers* in prose instead of wrapping it in the
+  // envelope, most commonly when the honest reply is "I can't reach that".
+  // Discarding it threw away a good answer and showed canned steps instead,
+  // so treat clean prose as the answer it plainly is.
+  const prose = raw.trim()
+  if (prose && !prose.includes('{') && prose.length <= 1200) {
+    return { tool: 'answer', reply: prose }
+  }
+  console.warn(`[agent-loop] unusable model output (${prose.length} chars): ${prose.slice(0, 200)}`)
+  return null
 }
 
 /**
