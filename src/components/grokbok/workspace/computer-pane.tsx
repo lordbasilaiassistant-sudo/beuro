@@ -5,7 +5,7 @@
 // live activity terminal, memory, and scheduled routines.
 // ============================================================
 
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -391,14 +391,26 @@ function RoutinesCard({ store, bot, busy }: { store: GrokbokStore; bot: Bot; bus
 
 export function ComputerPane({ store }: { store: GrokbokStore }) {
   const [fireOpen, setFireOpen] = useState(false)
+  const [selectedBotId, setSelectedBotId] = useState<string | null>(null)
   const thread = store.activeThread
-  const bot = thread ? store.botById(thread.botIds[0] ?? '') : undefined
 
-  const lastBotMessage = useMemo(() => {
-    if (!thread || !bot) return null
-    const list = thread.messages.filter((m) => m.role === 'bot' && m.botId === bot.id)
-    return list.length > 0 ? list[list.length - 1] : null
-  }, [thread, bot])
+  // A group thread has several bots and every one of them does real work now,
+  // so pinning the pane to botIds[0] hid the rest — you could read a teammate's
+  // reply in the chat but never see the sources behind it. Default to the first
+  // member, let the user switch.
+  const threadBots = thread
+    ? thread.botIds.map((id) => store.botById(id)).filter((b): b is Bot => Boolean(b))
+    : []
+  const bot =
+    threadBots.find((b) => b.id === selectedBotId) ?? threadBots[0] ?? undefined
+
+  // No useMemo here on purpose. `bot` is derived from a list rebuilt each
+  // render, so a manual memo cannot be preserved and the React Compiler bails
+  // out of optimizing the whole component to respect it — worse than the
+  // filter it was saving. Let the compiler memoize; scanning one thread's
+  // messages is cheap.
+  const botMessages = thread?.messages.filter((m) => m.role === 'bot' && m.botId === bot?.id) ?? []
+  const lastBotMessage = botMessages.length > 0 ? botMessages[botMessages.length - 1] : null
 
   if (!bot) {
     return (
@@ -446,6 +458,11 @@ export function ComputerPane({ store }: { store: GrokbokStore }) {
             <p className="truncate text-sm font-medium text-zinc-100">{bot.name}</p>
             <p className="truncate text-xs text-zinc-500">{bot.role}</p>
           </div>
+          {threadBots.length > 1 && (
+            <label className="sr-only" htmlFor="computer-bot-picker">
+              Whose Computer to show
+            </label>
+          )}
           <AlertDialog open={fireOpen} onOpenChange={setFireOpen}>
             <AlertDialogTrigger asChild>
               <Button
@@ -482,6 +499,40 @@ export function ComputerPane({ store }: { store: GrokbokStore }) {
             </AlertDialogContent>
           </AlertDialog>
         </div>
+
+        {threadBots.length > 1 && (
+          <div
+            id="computer-bot-picker"
+            role="tablist"
+            aria-label="Whose Computer to show"
+            className="mt-2.5 flex flex-wrap gap-1"
+          >
+            {threadBots.map((member) => {
+              const active = member.id === bot.id
+              return (
+                <button
+                  key={member.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={active}
+                  onClick={() => setSelectedBotId(member.id)}
+                  className={cn(
+                    'flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs transition-colors',
+                    active
+                      ? 'border-zinc-600 bg-zinc-800 text-zinc-100'
+                      : 'border-zinc-800 text-zinc-500 hover:border-zinc-700 hover:text-zinc-300',
+                  )}
+                >
+                  <span aria-hidden="true">{member.emoji}</span>
+                  <span className="max-w-[90px] truncate">{member.name}</span>
+                  {store.workingBotIds.includes(member.id) && (
+                    <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
+                  )}
+                </button>
+              )
+            })}
+          </div>
+        )}
       </div>
 
       {/* Cards */}
