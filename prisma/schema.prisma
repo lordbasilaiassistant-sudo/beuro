@@ -12,15 +12,16 @@ datasource db {
 }
 
 model User {
-  id           String       @id @default(cuid())
-  email        String       @unique
+  id           String         @id @default(cuid())
+  email        String         @unique
   name         String
-  company      String       @default("")
+  company      String         @default("")
   passwordHash String
   bots         Bot[]
   threads      Thread[]
   connections  Connection[]
-  createdAt    DateTime     @default(now())
+  usage        UsageCounter[]
+  createdAt    DateTime       @default(now())
 }
 
 model Connection {
@@ -92,4 +93,27 @@ model Routine {
   enabled   Boolean   @default(true)
   lastRunAt DateTime?
   createdAt DateTime  @default(now())
+}
+
+/// Per-user, per-month usage. One row per user per billing period, incremented
+/// in place — cheaper than an event log and enough to bill, meter and rate-limit.
+///
+/// `turns` is the unit that costs money: one user message is one turn, and a
+/// turn is up to MAX_TURNS model calls plus whatever tools it runs. Measured
+/// 2026-08-30 at ~809 neurons/turn on Workers AI, so this is the number any
+/// price has to be derived from.
+model UsageCounter {
+  id         String   @id @default(cuid())
+  userId     String
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Billing period as YYYY-MM (UTC).
+  period     String
+  turns      Int      @default(0)
+  modelCalls Int      @default(0)
+  toolCalls  Int      @default(0)
+  updatedAt  DateTime @updatedAt
+  createdAt  DateTime @default(now())
+
+  @@unique([userId, period])
+  @@index([period])
 }

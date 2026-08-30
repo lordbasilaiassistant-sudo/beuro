@@ -17,6 +17,7 @@ import { callLLM, extractJson, parseActivity, parseMemoryUpdates } from '@/lib/g
 import { runAgentLoop } from '@/lib/agent-loop'
 import { TOOL_BY_NAME } from '@/lib/tools'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
+import { checkQuota, recordTurn } from '@/lib/usage'
 import type { ActivityStep } from '@/lib/grokbok-types'
 import type { Message as MessageRow } from '@prisma/client'
 
@@ -204,6 +205,14 @@ async function handleSend(payload: Record<string, unknown>, userId: string) {
   if (!threadId) return NextResponse.json({ error: 'threadId is required' }, { status: 400 })
   if (!content) return NextResponse.json({ error: 'content is required' }, { status: 400 })
 
+  // Checked BEFORE the work: a turn's cost is incurred by running it, so
+  // refusing afterwards would mean paying for the work and disappointing the
+  // user anyway. 402 rather than 429 — this is a billing limit, not a rate.
+  const quota = await checkQuota(userId)
+  if (!quota.ok) {
+    return NextResponse.json({ error: quota.reason, usage: quota.usage }, { status: 402 })
+  }
+
   const thread = await db.thread.findUnique({
     where: { id: threadId },
     include: { messages: { orderBy: { createdAt: 'asc' } } },
@@ -290,6 +299,15 @@ async function handleSend(payload: Record<string, unknown>, userId: string) {
   }
 
   await db.thread.update({ where: { id: thread.id }, data: { updatedAt: new Date() } })
+
+  // Metered after the work, so a user is never charged for a turn that failed
+  // before producing anything. Counts tool calls too, since those are the part
+  // that can also cost money once a tool talks to a paid service.
+  const toolCalls = replies.reduce(
+    (n, r) => n + r.activity.filter((a) => a.verified === true && a.kind !== 'done').length,
+    0,
+  )
+  await recordTurn(userId, { modelCalls: replies.length, toolCalls })
 
   return NextResponse.json({ messages: savedRows.map(toMessage) })
 }
