@@ -174,6 +174,52 @@ export function chatCompletion(messages: ChatMessage[], timeoutMs = 60000): Prom
   )
 }
 
+// ---- live web search ----------------------------------------------------
+
+export interface SearchResult {
+  url: string
+  name: string
+  snippet: string
+  host_name: string
+  rank: number
+  date: string
+}
+
+/**
+ * Real web search via the GLM rail's search endpoint. Returns genuine ranked
+ * results — url, title, snippet, date — not model recall.
+ *
+ * This shares the SAME serial queue as chat, deliberately: the rate limit is
+ * per deployment across every endpoint, so a search burst would lock chat out
+ * too. Search is available regardless of LLM_PROVIDER, since it is the rail's
+ * own capability rather than a chat completion.
+ */
+export function glmSearch(query: string, num = 6): Promise<SearchResult[]> {
+  return enqueue(async () => {
+    const res = await fetch(`${GLM_BASE}/api/ai/search`, {
+      method: 'POST',
+      headers: { 'content-type': 'application/json' },
+      body: JSON.stringify({ query: String(query), num }),
+      signal: AbortSignal.timeout(60000),
+    })
+
+    const text = await res.text()
+    if (isRateLimited(res.status, text)) {
+      throw new Error('search: upstream rate limit (the quota is shared deployment-wide)')
+    }
+    if (!res.ok) throw new Error(`search: HTTP ${res.status} ${text.slice(0, 160)}`)
+
+    let json: { success?: boolean; results?: SearchResult[]; error?: string }
+    try {
+      json = JSON.parse(text)
+    } catch {
+      throw new Error('search: rail returned non-JSON')
+    }
+    if (json.success === false) throw new Error(`search: ${json.error || 'success:false'}`)
+    return Array.isArray(json.results) ? json.results : []
+  })
+}
+
 /** Which rail is live — surfaced by GET /api for diagnostics. */
 export function providerInfo() {
   return PROVIDER === 'openai'

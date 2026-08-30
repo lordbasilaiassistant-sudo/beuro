@@ -14,6 +14,7 @@ import { NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson, parseActivity, parseMemoryUpdates } from '@/lib/grokbok-llm'
+import { runAgentLoop } from '@/lib/agent-loop'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
 import type { ActivityStep } from '@/lib/grokbok-types'
 import type { Message as MessageRow } from '@prisma/client'
@@ -318,26 +319,51 @@ async function dmTurn(
   historyText: string,
   content: string,
 ): Promise<NormalizedReply> {
+  // The Bot actually works the task on its computer: real searches, real
+  // pages. Steps come back written by the tools, so the activity feed is a
+  // record of what happened rather than a story about it.
   const system = botSystemPrompt(bot, ws)
-  const history = historyText ? `${historyText}\n\n` : ''
-  const user = `${history}The user just said: ${content}
+  // Keep prior turns clearly marked as background. Pasting them in unlabelled
+  // made the Bot re-run a search from an earlier question and attach those
+  // steps to an unrelated answer — real actions, wrong conversation.
+  const task = historyText
+    ? `Earlier in this conversation (background only — do NOT act on it again):
+${historyText}
 
-Respond with STRICT JSON only — no markdown, no commentary — exactly this shape:
-{"activity":[{"kind":"signin","text":"..."}],"reply":"...","memoryUpdates":[],"needsApproval":false,"approvalNote":""}
-Rules:
-- "activity": 4-7 short steps of the work you are doing right now on your own cloud computer. Be concrete and reference the user's actual connected tools where relevant.
-- "reply": your answer in a competent teammate voice, 1-4 sentences, referencing the concrete work.
-- "memoryUpdates": 0-3 short durable facts worth remembering about the user, their company, accounts, or preferences (empty array if none).
-- Approval policy — set "needsApproval": true whenever the request involves ANY of: sending email/DMs/Slack messages to other people, spending or wiring money, publishing or posting externally, signing or sending contracts, deleting data, or making hiring decisions. In that case: do NOT claim you already did it — your activity steps must END with preparing the draft/action (e.g. {"kind":"write","text":"Draft ready — 40 recipients lined up"}), and your reply says it is ready and waiting for their sign-off. "approvalNote": one short line describing the pending action.
-- Set "needsApproval": false only for internal, read-only, or reversible work (research, summaries, drafting for review, organizing, scheduling drafts). Then complete it fully and say it's done.`
+---
+Their request right now, the only thing to act on:
+${content}`
+    : content
 
-  try {
-    const raw = await callLLM(system, user)
-    const parsed = extractJson<LLMEntry>(raw)
-    return normalizeEntry(parsed, new Set([bot.id]), bot.id)
-  } catch (error) {
-    console.error(`[api/chat] DM turn LLM failed for ${bot.name}, using fallback:`, error)
+  const outcome = await runAgentLoop(system, task)
+
+  console.info(
+    `[api/chat] ${bot.name}: ${outcome.toolCalls} tool call(s), realWork=${outcome.didRealWork}, brokeDown=${outcome.brokeDown}`,
+  )
+
+  // Nothing executed and the model gave us nothing usable — fall back so the
+  // UI still moves, but the steps stay unverified and the pane will say so.
+  if (!outcome.didRealWork && outcome.brokeDown) {
     return fallbackEntry(bot.id)
+  }
+
+  // A Bot that answered straight from what it knew ran no tools, and that is
+  // a legitimate answer — but it must NOT be dressed in borrowed activity.
+  // Padding it with FALLBACK_ACTIVITY would claim it signed in and drafted a
+  // deliverable when it did nothing, which is precisely the lie we are here
+  // to kill. One honest, unverified line instead.
+  const activity: ActivityStep[] =
+    outcome.steps.length > 0
+      ? outcome.steps
+      : [{ kind: 'think', text: 'Answered directly — no tools needed for this one.' }]
+
+  return {
+    botId: bot.id,
+    activity,
+    reply: outcome.reply || FALLBACK_REPLY,
+    memoryUpdates: outcome.memoryUpdates,
+    needsApproval: outcome.needsApproval,
+    approvalNote: outcome.approvalNote,
   }
 }
 

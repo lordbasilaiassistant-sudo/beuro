@@ -50,7 +50,7 @@ import {
 import { ScrollArea } from '@/components/ui/scroll-area'
 import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
-import type { ActivityKind, Bot, BotStatus, Routine } from '@/lib/grokbok-types'
+import type { ActivityKind, ActivityStep, Bot, BotStatus, Routine } from '@/lib/grokbok-types'
 import { cn } from '@/lib/utils'
 import type { GrokbokStore } from './use-grokbok'
 
@@ -88,7 +88,7 @@ function LiveActivityCard({
   store: GrokbokStore
   botId: string
   working: boolean
-  lastBotMessage: { id: string; createdAt: string; activity: { kind: ActivityKind; text: string }[] } | null
+  lastBotMessage: { id: string; createdAt: string; activity: ActivityStep[] } | null
 }) {
   const liveSteps = store.pendingStepsByBot[botId] ?? []
   const visibleLive = liveSteps.slice(-5)
@@ -147,22 +147,48 @@ function LiveActivityCard({
           >
             {lastBotMessage.activity.map((step, i) => {
               const Icon = KIND_ICON[step.kind] ?? Brain
+              // Same rule as the chat log: executed steps read solid and carry
+              // their sources; described steps are dimmed and italic.
+              const real = step.verified === true
               return (
                 <motion.div
                   key={`${i}-${step.text}`}
                   variants={{ hidden: { opacity: 0, y: 4 }, show: { opacity: 1, y: 0 } }}
                   className={cn(
                     'flex items-start gap-2',
-                    step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-400',
+                    !real && 'italic text-zinc-600',
+                    real && (step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-300'),
                   )}
                 >
                   <Icon
                     className={cn(
                       'mt-0.5 size-3 shrink-0',
-                      step.kind === 'done' ? 'text-emerald-400' : 'text-zinc-500',
+                      real
+                        ? step.kind === 'done'
+                          ? 'text-emerald-400'
+                          : 'text-zinc-400'
+                        : 'text-zinc-700',
                     )}
                   />
-                  <span>{step.text}</span>
+                  <span className="min-w-0">
+                    {step.text}
+                    {step.evidence && step.evidence.length > 0 && (
+                      <span className="mt-1 flex flex-col gap-0.5">
+                        {step.evidence.map((e) => (
+                          <a
+                            key={e.href}
+                            href={e.href}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            title={e.href}
+                            className="truncate text-[10px] text-zinc-500 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline"
+                          >
+                            › {e.href.replace(/^https?:\/\//, '')}
+                          </a>
+                        ))}
+                      </span>
+                    )}
+                  </span>
                 </motion.div>
               )
             })}

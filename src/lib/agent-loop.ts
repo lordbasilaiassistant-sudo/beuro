@@ -1,0 +1,230 @@
+// ============================================================
+// Beuro — the agent loop (BACKEND ONLY)
+//
+// The Bot's working cycle: think → act → observe → repeat → answer.
+// Every "act" is a real tool call against the real internet, and every
+// observation is what genuinely came back.
+//
+// ── THE HONESTY RULE, ENFORCED HERE ──
+// A step's text is written by the TOOL, never by the model. The model
+// chooses *which* tool to run; the tool reports *what happened*. That is
+// why a Bot cannot claim "Read 14 support tickets" when all it did was a
+// web search — it does not get to write that line.
+//
+// Steps produced here carry `verified: true` and their evidence. Steps
+// invented anywhere else must not. The UI renders the two differently, so
+// this flag is the difference between a product and a puppet show.
+// ============================================================
+
+import { callLLM, extractJson, parseMemoryUpdates } from '@/lib/grokbok-llm'
+import { TOOL_BY_NAME, toolMenu, type ToolCall } from '@/lib/tools'
+import type { ActivityStep, Evidence } from '@/lib/grokbok-types'
+
+/** Hard ceiling on tool calls per turn. Each one is latency and shared quota. */
+const MAX_TURNS = 5
+/** How much of an observation we carry forward into the next prompt. */
+const OBSERVATION_BUDGET = 3500
+
+export interface AgentOutcome {
+  reply: string
+  /** Real actions, in order. Every one has `verified: true`. */
+  steps: ActivityStep[]
+  evidence: Evidence[]
+  toolCalls: number
+  /** True when at least one tool actually executed. */
+  didRealWork: boolean
+  /** Set when the loop could not get a usable decision out of the model. */
+  brokeDown: boolean
+  /** Durable facts worth remembering, supplied with the final answer. */
+  memoryUpdates: string[]
+  /** Set when finishing the job needs the user's sign-off first. */
+  needsApproval: boolean
+  approvalNote: string
+}
+
+interface Exchange {
+  call: ToolCall
+  observation: string
+  ok: boolean
+}
+
+function clip(text: string, max: number): string {
+  return text.length > max ? `${text.slice(0, max)}\n…[truncated]` : text
+}
+
+/**
+ * Ask the model for the next single action. Returns a parsed tool call, or
+ * null when the model produced nothing usable.
+ */
+async function nextAction(
+  system: string,
+  task: string,
+  history: Exchange[],
+  turnsLeft: number,
+): Promise<ToolCall | null> {
+  const transcript =
+    history.length === 0
+      ? 'Nothing yet — this is your first action.'
+      : history
+          .map((h, i) => {
+            const args = JSON.stringify({ ...h.call, tool: undefined })
+            return `Action ${i + 1}: ${h.call.tool} ${args}\nResult: ${clip(h.observation, OBSERVATION_BUDGET)}`
+          })
+          .join('\n\n')
+
+  const prompt = `Task from your teammate:
+"""
+${task}
+"""
+
+Your work so far:
+${transcript}
+
+Tools available:
+${toolMenu()}
+- {"tool":"answer","reply":"...","memoryUpdates":[],"needsApproval":false,"approvalNote":""} — finish and reply.
+
+Rules:
+- Reply with ONE JSON object and nothing else. No prose, no code fences.
+- Use the tools to find out what you do not already know. Do not guess a URL's
+  contents — open it.
+- State facts ONLY if they appear in a Result above. If the results do not
+  support an answer, say so plainly in your reply.
+- You have ${turnsLeft} action${turnsLeft === 1 ? '' : 's'} left before you must answer.
+- When you have enough, use "answer".
+
+On the "answer" action:
+- "reply": 1-4 sentences in your own voice, grounded in the Results above.
+- "memoryUpdates": 0-3 short durable facts about this person, their company or
+  their preferences. Not task trivia. Empty array if nothing lasting.
+- "needsApproval": true if finishing would send a message to someone else, spend
+  money, publish externally, sign something, delete data, or make a hiring call.
+  Then STOP before doing it, say it is ready and waiting for sign-off, and put one
+  line in "approvalNote". Otherwise false.`
+
+  let raw: string
+  try {
+    raw = await callLLM(system, prompt, 60000)
+  } catch {
+    return null
+  }
+
+  try {
+    const parsed = extractJson<Record<string, unknown>>(raw)
+    const tool = typeof parsed.tool === 'string' ? parsed.tool.trim() : ''
+    if (!tool) return null
+    return { ...parsed, tool } as ToolCall
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Run the loop. Never throws — a broken model or a dead tool degrades into an
+ * honest outcome the caller can render, rather than a 500.
+ */
+export async function runAgentLoop(system: string, task: string): Promise<AgentOutcome> {
+  const history: Exchange[] = []
+  const steps: ActivityStep[] = []
+  const evidence: Evidence[] = []
+  let reply = ''
+  let brokeDown = false
+  let memoryUpdates: string[] = []
+  let needsApproval = false
+  let approvalNote = ''
+
+  for (let turn = 0; turn < MAX_TURNS; turn += 1) {
+    const action = await nextAction(system, task, history, MAX_TURNS - turn)
+
+    if (!action) {
+      brokeDown = true
+      break
+    }
+
+    // Finished.
+    if (action.tool === 'answer' || action.tool === 'done') {
+      const text = typeof action.reply === 'string' ? action.reply.trim() : ''
+      if (text) reply = text
+      memoryUpdates = parseMemoryUpdates(action.memoryUpdates)
+      needsApproval = action.needsApproval === true
+      approvalNote =
+        typeof action.approvalNote === 'string' ? action.approvalNote.trim().slice(0, 300) : ''
+      break
+    }
+
+    const spec = TOOL_BY_NAME.get(action.tool)
+    if (!spec) {
+      // Unknown tool: tell the model plainly and let it correct itself. This
+      // counts as a turn so a confused model cannot spin forever.
+      history.push({
+        call: action,
+        observation: `There is no tool called "${action.tool}". Available: ${[...TOOL_BY_NAME.keys()].join(', ')}, answer.`,
+        ok: false,
+      })
+      continue
+    }
+
+    const result = await spec.run(action)
+
+    history.push({ call: action, observation: result.observation, ok: result.ok })
+    steps.push({
+      kind: spec.kind,
+      // The tool's words, not the model's. This is the honesty guarantee.
+      text: result.summary.slice(0, 240),
+      evidence: result.evidence.length > 0 ? result.evidence : undefined,
+      verified: true,
+    })
+    for (const e of result.evidence) {
+      if (!evidence.some((x) => x.href === e.href)) evidence.push(e)
+    }
+  }
+
+  const didRealWork = steps.length > 0
+
+  // No reply yet, but real tool results are sitting in `history`. This happens
+  // when the model fumbles a JSON turn (brokeDown) or spends every turn on
+  // tools. Either way the findings are real and throwing them away would be
+  // the worst outcome — so summarise from the observations. This is a plain
+  // prose call, which a model that just failed at JSON can still manage.
+  if (!reply && didRealWork) {
+    const findings = history
+      .map((h, i) => `Action ${i + 1} (${h.call.tool}):\n${clip(h.observation, OBSERVATION_BUDGET)}`)
+      .join('\n\n')
+    try {
+      reply = (
+        await callLLM(
+          system,
+          `Task: ${task}\n\nEverything you found:\n${findings}\n\nReply to your teammate now, in 1-4 sentences. Use ONLY facts present above. If they do not answer the task, say what you could not determine. Plain text, no JSON.`,
+          45000,
+        )
+      ).trim()
+    } catch {
+      reply = ''
+    }
+    // The findings were real even though the model stumbled getting here.
+    if (reply) brokeDown = false
+  }
+
+  if (!reply) {
+    reply = didRealWork
+      ? "I did the legwork but couldn't pull it into an answer — the notes are in my computer log."
+      : "I couldn't get this one moving. Nothing ran, so I have nothing to report."
+    brokeDown = true
+  }
+
+  if (didRealWork) {
+    steps.push({ kind: 'done', text: 'Finished — findings below.', verified: true })
+  }
+
+  return {
+    reply,
+    steps,
+    evidence,
+    toolCalls: steps.filter((s) => s.kind !== 'done').length,
+    didRealWork,
+    brokeDown,
+    memoryUpdates,
+    needsApproval,
+    approvalNote,
+  }
+}

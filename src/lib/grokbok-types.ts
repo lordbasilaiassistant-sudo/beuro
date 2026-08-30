@@ -31,10 +31,29 @@ export interface Connection {
   createdAt: string;
 }
 
-/** One line in the bot's "Computer" activity feed. */
+/** Something the user can open to check a Bot's work. */
+export interface Evidence {
+  kind: "url" | "file";
+  label: string;
+  href: string;
+}
+
+/**
+ * One line in the bot's "Computer" activity feed.
+ *
+ * `verified` is the honesty flag and the UI MUST respect it:
+ *   true  — this step is a record of an action that really executed. Its text
+ *           came from the tool's own result, not from the model, and `evidence`
+ *           points at what produced it.
+ *   false/absent — narrated. The model said this happened; nothing checked it.
+ *
+ * Never set `verified: true` on a step the server did not actually perform.
+ */
 export interface ActivityStep {
   kind: ActivityKind;
   text: string;
+  evidence?: Evidence[];
+  verified?: boolean;
 }
 
 export interface Memory {

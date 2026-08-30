@@ -6,7 +6,7 @@
 // ============================================================
 
 import { chatCompletion } from '@/lib/llm-provider'
-import type { ActivityKind, ActivityStep } from '@/lib/grokbok-types'
+import type { ActivityKind, ActivityStep, Evidence } from '@/lib/grokbok-types'
 
 const VALID_KINDS: readonly string[] = ['think', 'signin', 'tool', 'read', 'write', 'done']
 export const MAX_ACTIVITY_STEPS = 8
@@ -155,9 +155,38 @@ export function parseActivity(raw: unknown): ActivityStep[] {
     else if (obj.text !== null && obj.text !== undefined) text = String(obj.text).trim()
     if (!text) continue
 
-    steps.push({ kind, text: text.slice(0, 240) })
+    const step: ActivityStep = { kind, text: text.slice(0, 240) }
+
+    // Carry the honesty flag and its evidence through. This function is also
+    // the DB round-trip (grokbok-serialize calls it), so dropping these here
+    // silently downgrades every real step to "narrated" on reload.
+    if (obj.verified === true) step.verified = true
+    const evidence = parseEvidence(obj.evidence)
+    if (evidence.length > 0) step.evidence = evidence
+
+    steps.push(step)
   }
   return steps
+}
+
+/** Validate evidence links. Only http(s) — an evidence link is user-clickable. */
+function parseEvidence(raw: unknown): Evidence[] {
+  if (!Array.isArray(raw)) return []
+  const out: Evidence[] = []
+  for (const entry of raw) {
+    if (entry === null || typeof entry !== 'object') continue
+    const obj = entry as Record<string, unknown>
+    const href = typeof obj.href === 'string' ? obj.href.trim() : ''
+    if (!/^https?:\/\//i.test(href)) continue
+    const label = typeof obj.label === 'string' && obj.label.trim() ? obj.label.trim() : href
+    out.push({
+      kind: obj.kind === 'file' ? 'file' : 'url',
+      label: label.slice(0, 120),
+      href: href.slice(0, 500),
+    })
+    if (out.length >= 6) break
+  }
+  return out
 }
 
 /** Pull 0–3 non-empty string memory updates out of unknown LLM output. */

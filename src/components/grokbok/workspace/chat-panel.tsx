@@ -62,24 +62,52 @@ function ActivityStrip({ steps }: { steps: ActivityStep[] }) {
       </span>
       {visible.map((step, i) => {
         const Icon = KIND_ICON[step.kind] ?? Brain
+        // A step that really executed is stated plainly and carries links you
+        // can open. A narrated one is dimmed and italic, because nothing
+        // checked it. The two must never look alike.
+        const real = step.verified === true
         return (
           <span
             key={`${i}-${step.text}`}
             className={cn(
               'flex items-start gap-2 text-xs leading-relaxed',
-              step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-400',
+              !real && 'italic text-zinc-500',
+              real && (step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-300'),
             )}
           >
             <Icon
               className={cn(
                 'mt-0.5 size-3 shrink-0',
-                step.kind === 'done' ? 'text-emerald-400' : 'text-zinc-500',
+                real ? (step.kind === 'done' ? 'text-emerald-400' : 'text-zinc-400') : 'text-zinc-600',
               )}
             />
-            <span>{step.text}</span>
+            <span className="min-w-0">
+              {step.text}
+              {step.evidence && step.evidence.length > 0 && (
+                <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1">
+                  {step.evidence.map((e) => (
+                    <a
+                      key={e.href}
+                      href={e.href}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      title={e.href}
+                      className="max-w-[220px] truncate rounded bg-zinc-900 px-1.5 py-0.5 text-[10px] text-zinc-400 underline-offset-2 transition-colors hover:text-zinc-100 hover:underline"
+                    >
+                      {e.label}
+                    </a>
+                  ))}
+                </span>
+              )}
+            </span>
           </span>
         )
       })}
+      {steps.some((s) => s.verified !== true) && (
+        <span className="mt-1 text-[10px] text-zinc-600">
+          Italic steps are described, not verified.
+        </span>
+      )}
       {hidden > 0 && (
         <button
           type="button"
