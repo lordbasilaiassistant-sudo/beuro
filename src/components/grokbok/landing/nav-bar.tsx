@@ -5,13 +5,14 @@ import { Menu, X } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 
+// Every link points at a section that exists. The previous list had six
+// entries for four targets — "Developers" and "News" were filler that
+// duplicated other anchors, and two pointed at a section we removed.
 const NAV_LINKS = [
   { label: "Product", href: "#features" },
-  { label: "Solutions", href: "#bots" },
-  { label: "Developers", href: "#features" },
-  { label: "Company", href: "#testimonials" },
+  { label: "Bot jobs", href: "#bots" },
+  { label: "How it works", href: "#principles" },
   { label: "Pricing", href: "#pricing" },
-  { label: "News", href: "#testimonials" },
 ];
 
 const linkClasses =

@@ -3,5 +3,5 @@ export { Hero } from "./hero";
 export { Features } from "./features";
 export { BotJobs } from "./bot-jobs";
 export { Pricing } from "./pricing";
-export { Testimonials } from "./testimonials";
+export { Principles } from "./principles";
 export { SiteFooter } from "./site-footer";

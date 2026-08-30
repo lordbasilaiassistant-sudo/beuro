@@ -8,7 +8,7 @@ import {
   Features,
   BotJobs,
   Pricing,
-  Testimonials,
+  Principles,
   SiteFooter,
 } from "@/components/grokbok/landing";
 import { AuthPanel, type AuthMode } from "@/components/grokbok/auth";
@@ -77,7 +77,7 @@ export default function Home() {
       <Features />
       <BotJobs />
       <Pricing onLaunchWorkspace={openWorkspace} />
-      <Testimonials />
+      <Principles />
       <SiteFooter />
     </main>
   );
