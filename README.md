@@ -33,9 +33,14 @@ LLM_PROVIDER=glm
 # Or point it at anything OpenAI-compatible:
 LLM_PROVIDER=openai
 LLM_BASE_URL=https://api.groq.com/openai/v1
-LLM_MODEL=llama-3.3-70b-versatile
+LLM_MODEL=openai/gpt-oss-120b
 LLM_API_KEY=...
 ```
+
+Model names go stale — Groq decommissions them. If you get
+`llm: HTTP 404 ... model_not_found`, list what your account can actually
+reach (`curl $LLM_BASE_URL/models -H "Authorization: Bearer $LLM_API_KEY"`)
+and set `LLM_MODEL` to one of those.
 
 Check which rail is live:
 
