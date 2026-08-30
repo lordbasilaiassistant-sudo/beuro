@@ -226,7 +226,9 @@ export const TOOLS: ToolSpec[] = [
 
 export const TOOL_BY_NAME = new Map(TOOLS.map((t) => [t.name, t]))
 
-/** The tool menu injected into the agent prompt. */
-export function toolMenu(): string {
-  return TOOLS.map((t) => `- ${t.usage}`).join('\n')
+/** The tool menu injected into the agent prompt, minus any switched-off tools. */
+export function toolMenu(blocked?: ReadonlySet<string>): string {
+  return TOOLS.filter((t) => !blocked?.has(t.name))
+    .map((t) => `- ${t.usage}`)
+    .join('\n')
 }

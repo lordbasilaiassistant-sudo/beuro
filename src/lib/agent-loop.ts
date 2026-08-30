@@ -22,6 +22,8 @@ import type { ActivityStep, Evidence } from '@/lib/grokbok-types'
 
 /** Hard ceiling on tool calls per turn. Each one is latency and shared quota. */
 const MAX_TURNS = 5
+/** How many times one tool may run per task before it is switched off. */
+const REPEAT_LIMIT = 2
 /** How much of an observation we carry forward into the next prompt. */
 const OBSERVATION_BUDGET = 3500
 
@@ -61,6 +63,7 @@ async function nextAction(
   task: string,
   history: Exchange[],
   turnsLeft: number,
+  blocked: Set<string>,
 ): Promise<ToolCall | null> {
   const transcript =
     history.length === 0
@@ -81,7 +84,12 @@ Your work so far:
 ${transcript}
 
 Tools available:
-${toolMenu()}
+${toolMenu(blocked)}${
+    blocked.size > 0
+      ? `
+(${[...blocked].join(', ')} is switched off for the rest of this task — it stopped producing anything new.)`
+      : ''
+  }
 - {"tool":"answer","reply":"...","memoryUpdates":[],"needsApproval":false,"approvalNote":""} — finish and reply.
 
 Rules:
@@ -92,6 +100,12 @@ Rules:
   support an answer, say so plainly in your reply.
 - You have ${turnsLeft} action${turnsLeft === 1 ? '' : 's'} left before you must answer.
 - When you have enough, use "answer".
+- If the task needs something only the user's own private systems hold — their
+  inbox, bank balance, CRM, internal files — you cannot reach it. Say so with
+  "answer" straight away. Searching the public web for it wastes the turn and
+  the answer is not out there.
+- Do not repeat a search that already came back unhelpful. Change approach or
+  answer.
 
 On the "answer" action:
 - "reply": 1-4 sentences in your own voice, grounded in the Results above.
@@ -125,6 +139,11 @@ On the "answer" action:
  */
 export async function runAgentLoop(system: string, task: string): Promise<AgentOutcome> {
   const history: Exchange[] = []
+  // Relying on the model to stop repeating itself does not work — measured, it
+  // kept firing near-identical searches for private data that is not on the
+  // public web. So the cap is enforced here instead of asked for.
+  const useCount = new Map<string, number>()
+  const blocked = new Set<string>()
   const steps: ActivityStep[] = []
   const evidence: Evidence[] = []
   let reply = ''
@@ -134,7 +153,7 @@ export async function runAgentLoop(system: string, task: string): Promise<AgentO
   let approvalNote = ''
 
   for (let turn = 0; turn < MAX_TURNS; turn += 1) {
-    const action = await nextAction(system, task, history, MAX_TURNS - turn)
+    const action = await nextAction(system, task, history, MAX_TURNS - turn, blocked)
 
     if (!action) {
       brokeDown = true
@@ -165,6 +184,10 @@ export async function runAgentLoop(system: string, task: string): Promise<AgentO
     }
 
     const result = await spec.run(action)
+
+    const used = (useCount.get(spec.name) ?? 0) + 1
+    useCount.set(spec.name, used)
+    if (used >= REPEAT_LIMIT) blocked.add(spec.name)
 
     history.push({ call: action, observation: result.observation, ok: result.ok })
     steps.push({

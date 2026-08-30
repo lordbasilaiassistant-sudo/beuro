@@ -67,6 +67,63 @@ point it at a rail you control.
 
 ---
 
+## Bots do real work, and you can check it
+
+A Bot is not a chatbot narrating a task. It runs a loop — think, act, observe,
+answer — and every "act" is a real call against the real internet.
+
+```
+src/lib/tools.ts       the Bot's hands: web_search, read_url
+src/lib/agent-loop.ts  think -> act -> observe -> answer, capped at 5 tool calls
+```
+
+**The honesty guarantee.** A step's text is written by the **tool**, not the
+model. The model chooses which tool to run; the tool reports what happened. So
+a Bot cannot write "Read 14 support tickets" when all it did was a search — it
+does not get to write that line at all.
+
+Steps that really executed carry `verified: true` and their sources, and render
+solid with clickable links. Anything narrated renders dimmed and italic under
+the note *"Italic steps are described, not verified."* The two never look alike.
+If you are extending this, that flag is load-bearing: **never set `verified`
+on a step the server did not actually perform.**
+
+What that looks like in practice:
+
+```
+Q: "What is the current stable version of Node.js? Cite your source."
+
+  tool  Searched "current stable version of Node.js" — 6 results
+        nodejs.org · nodejs.org/en/about/previous-releases · ...
+  read  Read nodejs.org
+        nodejs.org/en
+  done  Finished — findings below.
+
+A: "The current stable version of Node.js is v26.8.1 ... latest LTS is
+   v24.20.0. Source: https://nodejs.org/en"      <- matches nodejs.org/dist/index.json
+```
+
+Ask a Bot something it cannot reach and it says so rather than inventing:
+*"I don't have access to your Zendesk inbox."* Point it at a private address
+and the tool refuses before any request goes out (`127.0.0.1`, `10.x`,
+`192.168.x`, `.local` and friends are blocked, so a Bot cannot be talked into
+probing the host's network).
+
+### What is NOT real yet
+
+Being explicit, because the whole point is not overclaiming:
+
+- **No persistent browser.** Bots fetch pages; they do not hold a logged-in
+  session, click, or fill forms. `Connection` rows are still only described to
+  the model, never invoked.
+- **Approving an action does not perform it.** The approve path asks the model
+  to describe completion.
+- **Nothing runs while the app is down.** Routines need a scheduler.
+- **Group chats still narrate.** Only 1:1 threads run the loop — which is why
+  group steps render italic.
+
+---
+
 ## Run it
 
 ```bash

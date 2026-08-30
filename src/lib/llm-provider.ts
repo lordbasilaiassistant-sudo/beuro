@@ -116,6 +116,10 @@ async function glmChat(messages: ChatMessage[], timeoutMs: number): Promise<stri
       // Measured: the lockout outlasts a minute of polling, so short retries
       // are actively harmful — each is another request against an angry limit.
       lastErr = 'glm: upstream rate limit (the quota is shared deployment-wide)'
+      // With a second rail configured there is nothing to wait for: the limit
+      // is not ours to wait out, and burning ~35s of backoff first made the
+      // caller time out before the fallback could answer. Hand over at once.
+      if (hasFallback) throw new Error(lastErr)
       if (attempt < retries) {
         await sleep(5000 * 2 ** attempt)
         continue
@@ -164,14 +168,61 @@ async function openAiChat(messages: ChatMessage[], timeoutMs: number): Promise<s
 
 // ---- public entry point -------------------------------------------------
 
+// ---- failover ------------------------------------------------------------
+
+const FALLBACK_BASE = (process.env.LLM_FALLBACK_BASE_URL || '').replace(/\/+$/, '')
+const FALLBACK_KEY = process.env.LLM_FALLBACK_API_KEY || ''
+const FALLBACK_MODEL = process.env.LLM_FALLBACK_MODEL || ''
+const hasFallback = Boolean(FALLBACK_BASE && FALLBACK_MODEL)
+
+async function fallbackChat(messages: ChatMessage[], timeoutMs: number): Promise<string> {
+  const headers: Record<string, string> = { 'content-type': 'application/json' }
+  if (FALLBACK_KEY) headers.authorization = `Bearer ${FALLBACK_KEY}`
+
+  const res = await fetch(`${FALLBACK_BASE}/chat/completions`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify({ model: FALLBACK_MODEL, messages, stream: false }),
+    signal: AbortSignal.timeout(timeoutMs),
+  })
+  const text = await res.text()
+  if (!res.ok) throw new Error(`fallback: HTTP ${res.status} ${text.slice(0, 160)}`)
+
+  let json: { choices?: Array<{ message?: { content?: string } }> }
+  try {
+    json = JSON.parse(text)
+  } catch {
+    throw new Error('fallback: non-JSON response')
+  }
+  const content = json.choices?.[0]?.message?.content ?? ''
+  if (!content.trim()) throw new Error('fallback: empty response')
+  return content
+}
+
 /**
  * One chat round-trip, serialised and retried. Resolves with the raw text;
  * rejects on error/timeout — callers own their fallbacks.
+ *
+ * An agent loop fires several calls per task, which is exactly the load that
+ * rate-limits the shared free rail deployment-wide (measured: a busy loop
+ * locked it out, and every later call came back 429). Backoff alone cannot
+ * fix that, because the limit is not ours to wait out — so when the primary
+ * rail is rate-limited we switch to a second free rail instead of failing the
+ * user's turn. Configure it with LLM_FALLBACK_* (see .env.example).
  */
 export function chatCompletion(messages: ChatMessage[], timeoutMs = 60000): Promise<string> {
-  return enqueue(() =>
-    PROVIDER === 'openai' ? openAiChat(messages, timeoutMs) : glmChat(messages, timeoutMs),
-  )
+  return enqueue(async () => {
+    try {
+      return PROVIDER === 'openai'
+        ? await openAiChat(messages, timeoutMs)
+        : await glmChat(messages, timeoutMs)
+    } catch (err) {
+      const why = err instanceof Error ? err.message : String(err)
+      if (!hasFallback || !/rate limit|429/i.test(why)) throw err
+      console.warn(`[llm] primary rail rate-limited, switching to ${FALLBACK_MODEL}`)
+      return fallbackChat(messages, timeoutMs)
+    }
+  })
 }
 
 // ---- live web search ----------------------------------------------------
