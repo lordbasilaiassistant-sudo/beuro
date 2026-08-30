@@ -219,6 +219,20 @@ export interface ToolSpec {
   run: (args: ToolCall) => Promise<ToolResult>
   /** The activity kind this tool produces in the feed. */
   kind: 'tool' | 'read'
+  /**
+   * True when running this tool changes something outside Beuro — sends a
+   * message, spends money, publishes, deletes, alters a live system.
+   *
+   * The agent loop REFUSES to run a side-effecting tool without the user's
+   * prior approval. That refusal is the gate, and it lives here rather than in
+   * the prompt because a prompt-level gate is not a gate: asked to wire $5,000
+   * or delete all records, the model raised the approval flag for neither.
+   * A structural rule cannot be talked out of.
+   *
+   * Every tool today is read-only, so nothing is currently gated — but the
+   * mechanism is in place and enforced before the first one lands.
+   */
+  sideEffecting?: boolean
 }
 
 export const TOOLS: ToolSpec[] = [

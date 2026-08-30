@@ -15,6 +15,7 @@ import { db } from '@/lib/db'
 import { getSessionUser, unauthorized } from '@/lib/auth'
 import { callLLM, extractJson, parseActivity, parseMemoryUpdates } from '@/lib/grokbok-llm'
 import { runAgentLoop } from '@/lib/agent-loop'
+import { TOOL_BY_NAME } from '@/lib/tools'
 import { parseJsonArray, toMessage } from '@/lib/grokbok-serialize'
 import type { ActivityStep } from '@/lib/grokbok-types'
 import type { Message as MessageRow } from '@prisma/client'
@@ -376,55 +377,106 @@ ${content}`
   }
 }
 
+/**
+ * A group turn. Bots take the work in sequence, and each one that speaks does
+ * REAL work — the same agent loop a 1:1 thread runs.
+ *
+ * This used to be a single LLM call that invented every bot's activity at once,
+ * which is why group steps were narrated while DM steps were verified. Same
+ * product, two different standards of truth. Now a cheap routing call decides
+ * who should pick this up, and then those bots actually run.
+ *
+ * Capped at MAX_GROUP_RESPONDERS because every responder is a full loop against
+ * a shared, serial rail — three bots deliberating is three times the latency
+ * and quota of one.
+ */
+const MAX_GROUP_RESPONDERS = 2
+
+async function chooseResponders(
+  bots: BotContext[],
+  ws: WorkspaceContext,
+  historyText: string,
+  content: string,
+): Promise<BotContext[]> {
+  const roster = bots.map((b) => `- ${b.id} — ${b.name}, ${b.role}`).join('\n')
+  const prompt = `${historyText ? `${historyText}\n\n` : ''}The user just said: ${content}
+
+Team:
+${roster}
+
+Which teammates should pick this up, in order? Reply with ONE JSON object and nothing else:
+{"botIds":["id","id"]}
+Pick 1 or 2 — only the ones whose role genuinely fits. Prefer one unless the task
+really needs a hand-off.`
+
+  try {
+    const parsed = extractJson<{ botIds?: unknown }>(await callLLM(groupSystemPrompt(bots, ws), prompt, 30000))
+    const ids = Array.isArray(parsed.botIds) ? parsed.botIds : []
+    const picked: BotContext[] = []
+    for (const id of ids) {
+      const bot = bots.find((b) => b.id === id)
+      if (bot && !picked.includes(bot)) picked.push(bot)
+      if (picked.length >= MAX_GROUP_RESPONDERS) break
+    }
+    if (picked.length > 0) return picked
+  } catch {
+    /* routing failed — fall through */
+  }
+  // Routing is a convenience, never a blocker: default to the first bot.
+  return [bots[0]]
+}
+
 async function groupTurn(
   bots: BotContext[],
   ws: WorkspaceContext,
   historyText: string,
   content: string,
 ): Promise<NormalizedReply[]> {
-  const system = groupSystemPrompt(bots, ws)
-  const history = historyText ? `${historyText}\n\n` : ''
-  const user = `${history}The user just said: ${content}
+  const responders = await chooseResponders(bots, ws, historyText, content)
+  const teammates = bots.map((b) => ({ name: b.name, role: b.role }))
+  const replies: NormalizedReply[] = []
+  let handoffContext = ''
 
-Respond with STRICT JSON only — no markdown, no commentary — exactly this shape:
-{"replies":[{"botId":"...","activity":[{"kind":"signin","text":"..."}],"reply":"...","memoryUpdates":[],"needsApproval":false,"approvalNote":""}]}
-Rules:
-- "replies": 1-3 entries in logical hand-off order (e.g. the coordinator triages first, then a specialist picks up the work). Each "botId" must be one of: ${bots
-    .map((b) => `"${b.id}" (${b.name})`)
-    .join(', ')}.
-- Per entry: "activity" is 4-7 concrete steps that bot does on its own computer, referencing the user's actual connected tools where relevant; "reply" is 1-3 sentences in that bot's voice picking up where the previous bot left off; "memoryUpdates" is 0-3 durable facts.
-- Approval policy — an entry sets "needsApproval": true whenever its work involves sending email/DMs to other people, spending or wiring money, publishing externally, signing contracts, deleting data, or hiring decisions; in that case the activity must END with the prepared draft/action (never claim it was sent/spent) and the reply says it's waiting for sign-off. "approvalNote" describes the pending action. Internal/read-only/reversible work completes fully with "needsApproval": false.`
+  for (const bot of responders) {
+    const task =
+      `${historyText ? `Earlier in this conversation (background only — do NOT act on it again):
+${historyText}
 
-  const validBotIds = new Set(bots.map((b) => b.id))
-  try {
-    const raw = await callLLM(system, user)
-    let entries: unknown[] = []
-    try {
-      const parsed = extractJson<{ replies?: unknown }>(raw)
-      entries = Array.isArray(parsed.replies) ? parsed.replies : []
-    } catch {
-      // Whole-object parse failed — salvage individual {"botId": ...} entries instead.
-      entries = salvageReplyObjects(raw)
-      console.warn(`[api/chat] group output failed full parse, salvaged ${entries.length} entries`)
-    }
+---
+` : ''}` +
+      `Their request right now, the only thing to act on:
+${content}` +
+      handoffContext
 
-    const normalized = entries
-      .filter((e): e is LLMEntry => e !== null && typeof e === 'object')
-      .slice(0, 3)
-      .map((entry, index) => normalizeEntry(entry, validBotIds, bots[Math.min(index, bots.length - 1)].id))
+    const outcome = await runAgentLoop(botSystemPrompt(bot, ws, teammates), task)
 
-    if (normalized.length === 0) throw new Error('no valid replies in group output')
-    return normalized
-  } catch (error) {
-    console.error('[api/chat] group turn LLM failed, using fallback:', error)
-    return [fallbackEntry(bots[0].id)]
+    console.info(
+      `[api/chat] group ${bot.name}: ${outcome.toolCalls} tool call(s), realWork=${outcome.didRealWork}`,
+    )
+
+    replies.push({
+      botId: bot.id,
+      activity:
+        outcome.steps.length > 0
+          ? outcome.steps
+          : [{ kind: 'think', text: 'Answered directly — no tools needed for this one.' }],
+      reply: outcome.reply || FALLBACK_REPLY,
+      memoryUpdates: outcome.memoryUpdates,
+      needsApproval: outcome.needsApproval,
+      approvalNote: outcome.approvalNote,
+    })
+
+    // The next teammate picks up from what this one actually found, not from
+    // an invented summary of it.
+    handoffContext = `
+
+${bot.name} has already replied: "${outcome.reply}"
+Build on that rather than repeating it.`
   }
+
+  return replies.length > 0 ? replies : [fallbackEntry(bots[0].id)]
 }
 
-/**
- * Last-resort salvage for malformed group output: carve out top-level objects
- * that contain a "botId" key and parse each one through the repair pipeline.
- */
 function salvageReplyObjects(raw: string): unknown[] {
   const salvaged: unknown[] = []
   for (let i = raw.indexOf('"botId"'); i !== -1; i = raw.indexOf('"botId"', i + 1)) {
@@ -529,7 +581,21 @@ async function handleApproval(payload: Record<string, unknown>, userId: string) 
   await db.message.update({ where: { id: message.id }, data: { approvalStatus: decision } })
 
   // 2. Bot posts a follow-up showing the outcome.
-  const plan = await buildFollowUpPlan(bot, ws, message.content, message.approvalNote, decision)
+  //
+  // On APPROVAL this used to ask the model to describe the action completing —
+  // "Sending 12 follow-ups…", "Done — all sent." Nothing was sent. There is no
+  // tool in this codebase that can send an email, move money or delete data, so
+  // every one of those lines was fiction, and approving something was the most
+  // dangerous place in the product to be telling it: the user has just said yes
+  // and is entitled to believe the thing happened.
+  //
+  // Now approval runs the real agent loop. If the approved work is something
+  // the Bot can actually do with its tools, it does it and the steps are
+  // verified. If it is not, the Bot says so plainly instead of pretending.
+  const plan =
+    decision === 'approved'
+      ? await runApprovedWork(bot, ws, message.content, message.approvalNote)
+      : await buildFollowUpPlan(bot, ws, message.content, message.approvalNote, decision)
   const followUp = await db.message.create({
     data: {
       threadId,
@@ -589,5 +655,43 @@ Rules:
     return decision === 'approved'
       ? { activity: APPROVED_FALLBACK.activity, reply: APPROVED_FALLBACK.reply }
       : { activity: REJECTED_FALLBACK.activity, reply: REJECTED_FALLBACK.reply }
+  }
+}
+
+/**
+ * Carry out work the user just approved — for real, with the same tools and
+ * the same honesty rules as a normal turn.
+ *
+ * The Bot cannot send, pay or delete. When the approved action needs one of
+ * those, the loop's own instructions make it say so; what it must never do is
+ * report success. Steps come back written by the tools that ran, so an empty
+ * toolset produces an empty log rather than a convincing one.
+ */
+async function runApprovedWork(
+  bot: BotContext,
+  ws: WorkspaceContext,
+  originalContent: string,
+  approvalNote: string,
+): Promise<{ activity: ActivityStep[]; reply: string }> {
+  const task =
+    `Your teammate just APPROVED this pending action: "${approvalNote || originalContent}"\n` +
+    `Your earlier message was: "${originalContent}"\n\n` +
+    `Carry out whatever part of it you can actually do with your tools, then report back. ` +
+    `If finishing it needs something you cannot do — sending a message to someone, spending money, ` +
+    `changing a system you have no access to — say exactly that and say what is still needed. ` +
+    `Do NOT report an action as done unless one of your tools performed it.`
+
+  // The user has said yes to the described action, so the structural gate that
+  // blocked it lifts for this follow-up turn — and only this one. Without this
+  // the Bot would ask for approval it has already been given.
+  const approved = new Set(TOOL_BY_NAME.keys())
+  const outcome = await runAgentLoop(botSystemPrompt(bot, ws), task, approved)
+
+  return {
+    activity:
+      outcome.steps.length > 0
+        ? outcome.steps
+        : [{ kind: 'think', text: 'Approved — but nothing here is something my tools can carry out.' }],
+    reply: outcome.reply || APPROVED_FALLBACK.reply,
   }
 }

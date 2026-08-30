@@ -170,7 +170,12 @@ On the "answer" action:
  * Run the loop. Never throws — a broken model or a dead tool degrades into an
  * honest outcome the caller can render, rather than a 500.
  */
-export async function runAgentLoop(system: string, task: string): Promise<AgentOutcome> {
+export async function runAgentLoop(
+  system: string,
+  task: string,
+  /** Tool names the user has already approved for this turn. */
+  approvedActions: ReadonlySet<string> = new Set(),
+): Promise<AgentOutcome> {
   const history: Exchange[] = []
   // Relying on the model to stop repeating itself does not work — measured, it
   // kept firing near-identical searches for private data that is not on the
@@ -213,6 +218,24 @@ export async function runAgentLoop(system: string, task: string): Promise<AgentO
         observation: `There is no tool called "${action.tool}". Available: ${[...TOOL_BY_NAME.keys()].join(', ')}, answer.`,
         ok: false,
       })
+      continue
+    }
+
+    // ── STRUCTURAL APPROVAL GATE ──
+    // A tool that changes the outside world does not run on the model's say-so.
+    // Measured why this cannot live in the prompt: told to wire $5,000 and to
+    // delete all records — both named explicitly in the approval policy — the
+    // model set needsApproval on neither. Here it has no choice.
+    if (spec.sideEffecting && !approvedActions.has(spec.name)) {
+      history.push({
+        call: action,
+        observation:
+          `${spec.name} changes things outside Beuro, so it needs your teammate's approval first. ` +
+          `Stop here, use "answer" with needsApproval true, and say in approvalNote exactly what you intend to do.`,
+        ok: false,
+      })
+      needsApproval = true
+      approvalNote = approvalNote || `Run ${spec.name}`
       continue
     }
 

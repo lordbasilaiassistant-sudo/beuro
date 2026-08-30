@@ -16,52 +16,43 @@ interface Plan {
   popular?: boolean;
 }
 
+// Beuro is MIT-licensed and self-hosted. There is no plan to sell, so this
+// section states what running it actually costs instead of inventing tiers.
+// It previously advertised $20/$30/$40 plans with "Get started" buttons and
+// features that do not exist ("Beuro's own computer", "Signs into your tools").
 const SUBHEADLINE =
-  "Every plan includes Beuro’s own computer, sign-in to your tools, routines on a schedule, and weekly usage.";
+  "Beuro is free and open source. You run it yourself, so the only cost is whatever model rail you point it at — and the default rail costs nothing.";
 
 const PLANS: Plan[] = [
   {
-    name: "Pro",
-    price: "$20",
-    per: "/mo",
-    blurb: "For individuals delegating their first lane.",
+    name: "Self-hosted",
+    price: "$0",
+    per: "",
+    blurb: "Clone it, run it, own it. This is the whole product.",
     features: [
-      "Beuro’s own computer",
-      "Signs into your tools",
-      "Routines on a schedule",
-      "Weekly Beuro usage included",
-      "Work anywhere: desktop, mobile, and more",
+      "No account, no API key, no signup",
+      "Live web search and real page reads included",
+      "Every step cites what it actually opened",
+      "Your data never leaves your machine",
+      "MIT licensed — fork it, change it, ship it",
     ],
-    cta: "Get started",
-    variant: "solid",
-  },
-  {
-    name: "Plus",
-    price: "$30",
-    per: "/mo",
-    blurb: "For power users who live in Beuro all day.",
-    features: [
-      "Everything in Pro",
-      "Higher rate limits across all features",
-      "Priority access at peak times",
-      "Early access to new features",
-    ],
-    cta: "Get started",
+    cta: "Open Workspace",
     variant: "solid",
     popular: true,
   },
   {
-    name: "Teams",
-    price: "$40",
-    per: "/seat/mo",
-    blurb: "For companies running a whole org chart of bots.",
+    name: "Bring your own model",
+    price: "Your rate",
+    per: "",
+    blurb: "Point it at a provider you control when the free rail is not enough.",
     features: [
-      "Everything in Plus",
-      "Centralized team billing and settings",
-      "Team marketplace for skills and plugins",
-      "Shared usage analytics",
+      "Any OpenAI-compatible endpoint",
+      "Groq, Ollama, vLLM, OpenRouter, z.ai, OpenAI",
+      "One env var to switch — no code change",
+      "Automatic failover to a second rail",
+      "You pay your provider directly. We take nothing.",
     ],
-    cta: "Contact sales",
+    cta: "Read the setup",
     variant: "ghost",
   },
 ];
@@ -96,7 +87,7 @@ export function Pricing({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }
             variants={item}
             className="text-4xl font-semibold leading-[1.08] tracking-tighter text-zinc-100 sm:text-6xl lg:text-7xl"
           >
-            Pricing
+            It&rsquo;s free.
           </motion.h2>
           <motion.p variants={item} className="mt-5 text-base text-zinc-400 sm:text-lg">
             {SUBHEADLINE}
@@ -108,7 +99,7 @@ export function Pricing({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }
           initial="hidden"
           whileInView="show"
           viewport={{ once: true, margin: "-60px" }}
-          className="mx-auto mt-16 grid max-w-5xl gap-4 lg:grid-cols-3"
+          className="mx-auto mt-16 grid max-w-3xl gap-4 sm:grid-cols-2"
         >
           {PLANS.map((plan) => (
             <motion.div
@@ -132,7 +123,7 @@ export function Pricing({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }
               </h3>
 
               <div className="mt-4 flex items-baseline gap-1">
-                <span className="text-5xl font-semibold tracking-tighter text-zinc-100">
+                <span className="text-4xl font-semibold tracking-tighter text-zinc-100 sm:text-5xl">
                   {plan.price}
                 </span>
                 <span className="text-sm text-zinc-500">{plan.per}</span>
@@ -158,11 +149,21 @@ export function Pricing({ onLaunchWorkspace }: { onLaunchWorkspace: () => void }
                     {plan.cta}
                   </Button>
                 ) : (
+                  // The ghost CTA had no handler at all — a button that looked
+                  // live and did nothing. It reads "Read the setup", so it goes
+                  // to the setup docs.
                   <Button
+                    asChild
                     variant="ghost"
                     className="h-11 w-full rounded-full border border-zinc-700 text-zinc-200 hover:bg-zinc-900 hover:text-zinc-100"
                   >
-                    {plan.cta}
+                    <a
+                      href="https://github.com/lordbasilaiassistant-sudo/beuro#readme"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      {plan.cta}
+                    </a>
                   </Button>
                 )}
               </div>
