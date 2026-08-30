@@ -1,9 +1,11 @@
 // ============================================================
-// GrokBok clone — shared LLM helpers (BACKEND ONLY)
-// Wraps z-ai-web-dev-sdk with timeout + robust JSON parsing.
+// GrokBok — shared LLM helpers (BACKEND ONLY)
+// Timeout + robust JSON parsing on top of the pluggable provider in
+// `llm-provider.ts` (keyless free rail by default, or any
+// OpenAI-compatible endpoint). No vendor SDK, no API key required.
 // ============================================================
 
-import ZAI from 'z-ai-web-dev-sdk'
+import { chatCompletion } from '@/lib/llm-provider'
 import type { ActivityKind, ActivityStep } from '@/lib/grokbok-types'
 
 const VALID_KINDS: readonly string[] = ['think', 'signin', 'tool', 'read', 'write', 'done']
@@ -14,29 +16,15 @@ export const MAX_ACTIVITY_STEPS = 8
  * Resolves with the raw text; rejects on error/timeout — callers handle fallbacks.
  */
 export async function callLLM(system: string, user: string, timeoutMs = 60000): Promise<string> {
-  const zai = await ZAI.create()
-
-  let timer: ReturnType<typeof setTimeout> | undefined
-  try {
-    const completion = await Promise.race([
-      zai.chat.completions.create({
-        messages: [
-          { role: 'system', content: system },
-          { role: 'user', content: user },
-        ],
-        thinking: { type: 'disabled' },
-      }),
-      new Promise<never>((_, reject) => {
-        timer = setTimeout(() => reject(new Error(`LLM call timed out after ${timeoutMs}ms`)), timeoutMs)
-      }),
-    ])
-
-    const text = completion.choices[0]?.message?.content ?? ''
-    if (!text.trim()) throw new Error('LLM returned an empty response')
-    return text
-  } finally {
-    if (timer) clearTimeout(timer)
-  }
+  const text = await chatCompletion(
+    [
+      { role: 'system', content: system },
+      { role: 'user', content: user },
+    ],
+    timeoutMs,
+  )
+  if (!text.trim()) throw new Error('LLM returned an empty response')
+  return text
 }
 
 /**
