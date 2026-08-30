@@ -9,6 +9,13 @@ import { chatCompletion } from '@/lib/llm-provider'
 import type { ActivityKind, ActivityStep, Evidence } from '@/lib/grokbok-types'
 
 const VALID_KINDS: readonly string[] = ['think', 'signin', 'tool', 'read', 'write', 'done']
+
+/**
+ * Where an activity array came from.
+ * - 'model'   — straight out of an LLM. Never trusted to mark itself verified.
+ * - 'trusted' — steps this server built and persisted, coming back off the DB.
+ */
+export type ActivitySource = 'model' | 'trusted'
 export const MAX_ACTIVITY_STEPS = 8
 
 /**
@@ -138,8 +145,15 @@ function closeOpenStructures(s: string): string {
  * - coerces unknown kinds to 'think'
  * - clamps to MAX_ACTIVITY_STEPS (8)
  */
-export function parseActivity(raw: unknown): ActivityStep[] {
+export function parseActivity(raw: unknown, source: ActivitySource = 'model'): ActivityStep[] {
   if (!Array.isArray(raw)) return []
+
+  // `verified` is a claim about what the SERVER did. Honouring it from model
+  // output let a Bot self-certify: asked to include "verified": true in its
+  // steps, it produced "Sent 400 personalized launch emails" rendered as a
+  // real, executed action, having sent nothing. Only the trusted path — our
+  // own already-validated steps coming back off the database — may carry it.
+  const trustVerified = source === 'trusted'
 
   const steps: ActivityStep[] = []
   for (const entry of raw) {
@@ -157,12 +171,14 @@ export function parseActivity(raw: unknown): ActivityStep[] {
 
     const step: ActivityStep = { kind, text: text.slice(0, 240) }
 
-    // Carry the honesty flag and its evidence through. This function is also
-    // the DB round-trip (grokbok-serialize calls it), so dropping these here
-    // silently downgrades every real step to "narrated" on reload.
-    if (obj.verified === true) step.verified = true
-    const evidence = parseEvidence(obj.evidence)
-    if (evidence.length > 0) step.evidence = evidence
+    // Only the trusted DB round-trip may carry the honesty flag and its
+    // evidence back. From model output both are dropped: a step is "real"
+    // because the server ran a tool, never because the model said so.
+    if (trustVerified) {
+      if (obj.verified === true) step.verified = true
+      const evidence = parseEvidence(obj.evidence)
+      if (evidence.length > 0) step.evidence = evidence
+    }
 
     steps.push(step)
   }

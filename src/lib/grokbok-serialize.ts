@@ -119,7 +119,9 @@ export function toMessage(row: MessageRow): ChatMessage {
     role,
     botId: row.botId,
     content: row.content,
-    activity: parseActivity(parseJsonArray<unknown>(row.activity)),
+    // Trusted: these are our own steps coming back off the database, already
+    // validated when they were written. Model output never gets this.
+    activity: parseActivity(parseJsonArray<unknown>(row.activity), 'trusted'),
     needsApproval: row.needsApproval,
     approvalStatus,
     approvalNote: row.approvalNote,

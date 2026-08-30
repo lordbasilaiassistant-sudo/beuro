@@ -37,6 +37,14 @@ export interface ToolCall {
 // ---------- guards -------------------------------------------------------
 
 const MAX_PAGE_CHARS = 6000
+/**
+ * JSON and other structured formats get a larger budget. Measured: a Bot read
+ * api.github.com, whose repo JSON runs past 6000 chars, lost stargazers_count
+ * to the clip, and invented a figure rather than saying it could not see one.
+ * Prose tolerates truncation because the gist survives; a data document does
+ * not, because the one field you wanted is usually the field that got cut.
+ */
+const MAX_DATA_CHARS = 20000
 const FETCH_TIMEOUT_MS = 20000
 
 /**
@@ -168,7 +176,9 @@ async function readUrl(args: ToolCall): Promise<ToolResult> {
       }
     }
 
-    const text = /html/i.test(type) ? htmlToText(body) : body.trim()
+    const isHtml = /html/i.test(type)
+    const text = isHtml ? htmlToText(body) : body.trim()
+    const budget = isHtml ? MAX_PAGE_CHARS : MAX_DATA_CHARS
     if (!text) {
       return {
         ok: false,
@@ -178,8 +188,10 @@ async function readUrl(args: ToolCall): Promise<ToolResult> {
       }
     }
 
-    const clipped = text.length > MAX_PAGE_CHARS
-    const shown = clipped ? `${text.slice(0, MAX_PAGE_CHARS)}\n…[truncated at ${MAX_PAGE_CHARS} characters]` : text
+    const clipped = text.length > budget
+    const shown = clipped
+      ? `${text.slice(0, budget)}\n…[truncated at ${budget} characters — say so rather than guessing at anything past this point]`
+      : text
 
     return {
       ok: true,

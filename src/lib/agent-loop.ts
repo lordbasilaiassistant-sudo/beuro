@@ -268,6 +268,30 @@ export async function runAgentLoop(system: string, task: string): Promise<AgentO
     brokeDown = true
   }
 
+  // ── GROUNDING CHECK ──
+  // `verified` certifies that an ACTION ran. It says nothing about whether the
+  // reply drawn from it is true, and those are different claims. Measured: a
+  // Bot really did read api.github.com, where stargazers_count is 119959 and
+  // appears three times in what it fetched — and reported 105698, a number
+  // present nowhere in the page. The free rail is weak at exact extraction
+  // (our own bench scores glm-4.5-flash 0% on schema extraction), so a
+  // plausible wrong figure is the expected failure, not a freak one.
+  //
+  // So: any sizeable figure in the reply must actually appear in something the
+  // Bot read. If it does not, say so where the user will see it rather than
+  // letting a fabricated number ride on a genuinely-verified step.
+  if (didRealWork && reply) {
+    const ungrounded = ungroundedFigures(reply, history)
+    if (ungrounded.length > 0) {
+      steps.push({
+        kind: 'think',
+        text: `Check before relying on this: ${ungrounded.slice(0, 3).join(', ')} ${
+          ungrounded.length === 1 ? 'was' : 'were'
+        } not found in the sources I opened.`,
+      })
+    }
+  }
+
   if (didRealWork) {
     steps.push({ kind: 'done', text: 'Finished — findings below.', verified: true })
   }
@@ -283,4 +307,34 @@ export async function runAgentLoop(system: string, task: string): Promise<AgentO
     needsApproval,
     approvalNote,
   }
+}
+
+/** Digits only, so "119,959" · "119959" · "119.959" all compare equal. */
+function digitsOf(s: string): string {
+  return s.replace(/[^\d]/g, '')
+}
+
+/**
+ * Figures asserted in the reply that appear in none of the observations.
+ *
+ * Only numbers of 3+ digits are checked: those are the specific claims worth
+ * doubting (counts, prices, versions), while small numbers are usually prose
+ * ("3 options") and would be noise. Years are skipped for the same reason.
+ */
+function ungroundedFigures(reply: string, history: Exchange[]): string[] {
+  const haystack = digitsOf(history.map((h) => h.observation).join(' '))
+  if (!haystack) return []
+
+  const out: string[] = []
+  for (const match of reply.match(/\d[\d,.]{2,}/g) ?? []) {
+    // Trailing separators are sentence punctuation, not part of the figure.
+    const raw = match.replace(/[.,]+$/, '')
+    const digits = digitsOf(raw)
+    if (digits.length < 3) continue
+    // A bare 4-digit year is nearly always narrative, not a claim under test.
+    if (/^(19|20)\d{2}$/.test(digits)) continue
+    if (haystack.includes(digits)) continue
+    if (!out.includes(raw)) out.push(raw)
+  }
+  return out
 }
