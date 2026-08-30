@@ -34,20 +34,16 @@ import type {
   ToggleRoutineInput,
 } from '@/lib/grokbok-types'
 
-// ---------- simulated computer activity ----------
-
-const STEP_POOL: ActivityStep[] = [
-  { kind: 'signin', text: 'Signing in to workspace tools…' },
-  { kind: 'read', text: 'Reading the latest context…' },
-  { kind: 'think', text: 'Planning the approach…' },
-  { kind: 'tool', text: 'Working through the request…' },
-  { kind: 'write', text: 'Drafting the update…' },
-  { kind: 'think', text: 'Double-checking the details…' },
-  { kind: 'done', text: 'Wrapping up…' },
-]
-
-const SIM_TICK_MS = 900
-const SIM_LOG_MAX = 7
+// ---------- live "working" signal ----------
+//
+// This used to tick a hardcoded list of invented steps ("Signing in to
+// workspace tools…") into the Computer terminal while a request was in
+// flight. None of it was real, and it sat in the exact pane whose whole job
+// is to show what the Bot is actually doing.
+//
+// Real steps now come back from the server, written by the tools that ran.
+// While we wait, we show only something we genuinely know: that it started,
+// and how long ago. No invented actions.
 
 // ---------- internal state ----------
 
@@ -59,7 +55,8 @@ interface GrokbokState {
   error: string | null
   activeThreadId: string | null
   workingBotIds: string[]
-  pendingStepsByBot: Record<string, ActivityStep[]>
+  /** botId → epoch ms when this bot started the current turn. */
+  workingSinceByBot: Record<string, number>
   loadMe: () => Promise<void>
   signup: (input: SignupInput) => Promise<boolean>
   login: (input: LoginInput) => Promise<boolean>
@@ -76,7 +73,7 @@ interface GrokbokState {
   runRoutine: (routineId: string) => Promise<boolean>
   addConnection: (input: CreateConnectionInput) => Promise<boolean>
   deleteConnection: (connectionId: string) => Promise<boolean>
-  stopSimulations: () => void
+  stopAllWork: () => void
 }
 
 /** What the workspace components consume. */
@@ -117,47 +114,21 @@ function sortByUpdatedDesc(a: Thread, b: Thread): number {
 // ---------- store ----------
 
 const useGrokbokBase = create<GrokbokState>()((set, get) => {
-  const simTimers = new Map<string, ReturnType<typeof setInterval>>()
-  const simIndexes = new Map<string, number>()
-
-  const stopSimulation = (botId: string, clearLog: boolean) => {
-    const timer = simTimers.get(botId)
-    if (timer) {
-      clearInterval(timer)
-      simTimers.delete(botId)
-    }
-    simIndexes.delete(botId)
-    if (clearLog) {
-      set((s) => {
-        if (!(botId in s.pendingStepsByBot)) return s
-        const next = { ...s.pendingStepsByBot }
-        delete next[botId]
-        return { pendingStepsByBot: next }
-      })
-    }
+  const markWorking = (botIds: string[]) => {
+    const now = Date.now()
+    set((s) => {
+      const next = { ...s.workingSinceByBot }
+      for (const id of botIds) next[id] = now
+      return { workingSinceByBot: next }
+    })
   }
 
-  const startSimulation = (botIds: string[]) => {
-    for (const botId of botIds) {
-      stopSimulation(botId, true)
-      simIndexes.set(botId, 0)
-      set((s) => ({ pendingStepsByBot: { ...s.pendingStepsByBot, [botId]: [] } }))
-      const timer = setInterval(() => {
-        const nextIndex = (simIndexes.get(botId) ?? 0) + 1
-        simIndexes.set(botId, nextIndex)
-        const step = STEP_POOL[(nextIndex - 1) % STEP_POOL.length]
-        set((s) => {
-          const log = s.pendingStepsByBot[botId] ?? []
-          return {
-            pendingStepsByBot: {
-              ...s.pendingStepsByBot,
-              [botId]: [...log, step].slice(-SIM_LOG_MAX),
-            },
-          }
-        })
-      }, SIM_TICK_MS)
-      simTimers.set(botId, timer)
-    }
+  const clearWorking = (botIds: string[]) => {
+    set((s) => {
+      const next = { ...s.workingSinceByBot }
+      for (const id of botIds) delete next[id]
+      return { workingSinceByBot: next }
+    })
   }
 
   return {
@@ -168,7 +139,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
     error: null,
     activeThreadId: null,
     workingBotIds: [],
-    pendingStepsByBot: {},
+    workingSinceByBot: {},
 
     loadMe: async () => {
       try {
@@ -210,13 +181,13 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
       } catch {
         /* clear locally regardless */
       }
-      for (const botId of [...simTimers.keys()]) stopSimulation(botId, true)
+      clearWorking(Object.keys(get().workingSinceByBot))
       set({
         me: null,
         state: null,
         activeThreadId: null,
         workingBotIds: [],
-        pendingStepsByBot: {},
+        workingSinceByBot: {},
       })
       toast.success('Signed out')
     },
@@ -285,7 +256,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
           : st.state,
         workingBotIds: members,
       }))
-      startSimulation(members)
+      markWorking(members)
 
       try {
         const body: SendChatInput = { threadId: thread.id, content: text }
@@ -306,7 +277,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
             : st.state,
         }))
       } finally {
-        members.forEach((id) => stopSimulation(id, true))
+        clearWorking(members)
         set({ workingBotIds: [] })
       }
     },
@@ -336,7 +307,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
           : st.state,
         workingBotIds: botId ? [botId] : [],
       }))
-      if (botId) startSimulation([botId])
+      if (botId) markWorking([botId])
 
       try {
         const body: ApprovalInput = { threadId: thread.id, messageId, decision }
@@ -362,7 +333,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
             : st.state,
         }))
       } finally {
-        if (botId) stopSimulation(botId, true)
+        if (botId) clearWorking([botId])
         set({ workingBotIds: [] })
       }
     },
@@ -486,7 +457,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
 
       const botId = routine.botId
       set({ workingBotIds: [botId] })
-      startSimulation([botId])
+      markWorking([botId])
 
       try {
         const body: RunRoutineInput = { routineId }
@@ -503,13 +474,13 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
         toast.error(err instanceof Error ? err.message : 'Routine run failed')
         return false
       } finally {
-        stopSimulation(botId, true)
+        clearWorking([botId])
         set({ workingBotIds: [] })
       }
     },
 
-    stopSimulations: () => {
-      for (const botId of [...simTimers.keys()]) stopSimulation(botId, true)
+    stopAllWork: () => {
+      clearWorking(Object.keys(get().workingSinceByBot))
       set({ workingBotIds: [] })
     },
   }

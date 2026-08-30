@@ -41,12 +41,12 @@ export function Workspace({
   const [newBotOpen, setNewBotOpen] = useState(false)
   const [connectionsOpen, setConnectionsOpen] = useState(false)
 
-  const { state, refresh, stopSimulations } = store
+  const { state, refresh, stopAllWork } = store
 
   useEffect(() => {
     if (!state) void refresh()
-    return () => stopSimulations()
-  }, [state, refresh, stopSimulations])
+    return () => stopAllWork()
+  }, [state, refresh, stopAllWork])
 
   if (!state) {
     return (

@@ -5,7 +5,7 @@
 // live activity terminal, memory, and scheduled routines.
 // ============================================================
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { motion } from 'framer-motion'
 import { formatDistanceToNow } from 'date-fns'
 import {
@@ -90,8 +90,22 @@ function LiveActivityCard({
   working: boolean
   lastBotMessage: { id: string; createdAt: string; activity: ActivityStep[] } | null
 }) {
-  const liveSteps = store.pendingStepsByBot[botId] ?? []
-  const visibleLive = liveSteps.slice(-5)
+  // Elapsed time is the only thing we truthfully know mid-turn, so it is the
+  // only thing the terminal shows. Real steps arrive when the turn lands.
+  const workingSince = store.workingSinceByBot[botId]
+  const [elapsed, setElapsed] = useState(0)
+
+  useEffect(() => {
+    if (!workingSince) {
+      setElapsed(0)
+      return
+    }
+    setElapsed(Math.floor((Date.now() - workingSince) / 1000))
+    const t = setInterval(() => {
+      setElapsed(Math.floor((Date.now() - workingSince) / 1000))
+    }, 1000)
+    return () => clearInterval(t)
+  }, [workingSince])
 
   return (
     <section className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs">
@@ -100,7 +114,10 @@ function LiveActivityCard({
           {working ? (
             <>
               <span className="size-1.5 animate-pulse rounded-full bg-emerald-400" />
-              Working · 24/7
+              {/* Not "24/7" — nothing runs while the app is down. It will be
+                  true once routines move to a scheduler; until then, don't
+                  claim it. */}
+              Working
             </>
           ) : lastBotMessage ? (
             <>Last run {relTime(lastBotMessage.createdAt)}</>
@@ -113,30 +130,24 @@ function LiveActivityCard({
 
       <div className="mt-2 flex flex-col gap-1">
         {working ? (
-          <>
-            {visibleLive.length === 0 && (
-              <div className="flex items-center gap-2 text-zinc-500">
-                <span className="text-zinc-600">›</span>
-                <span>Booting machine…</span>
-                <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-[2px] bg-emerald-400" />
-              </div>
-            )}
-            {visibleLive.map((step, i, arr) => (
-              <motion.div
-                key={`${i}-${step.text}`}
-                initial={{ opacity: 0, x: -4 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.2 }}
-                className="flex items-start gap-2 text-zinc-300"
-              >
-                <span className="mt-0.5 text-zinc-600">›</span>
-                <span>{step.text}</span>
-                {i === arr.length - 1 && (
-                  <span className="ml-0.5 mt-1.5 inline-block size-1.5 animate-pulse rounded-[2px] bg-emerald-400" />
+          <div className="flex flex-col gap-1">
+            <div className="flex items-center gap-2 text-zinc-300">
+              <span className="text-zinc-600">›</span>
+              <span>
+                Working
+                {elapsed > 0 && (
+                  <span className="text-zinc-500">
+                    {' '}
+                    · {Math.floor(elapsed / 60)}:{String(elapsed % 60).padStart(2, '0')}
+                  </span>
                 )}
-              </motion.div>
-            ))}
-          </>
+              </span>
+              <span className="ml-0.5 inline-block size-1.5 animate-pulse rounded-[2px] bg-emerald-400" />
+            </div>
+            <span className="text-[10px] text-zinc-600">
+              Steps appear here once they have actually run.
+            </span>
+          </div>
         ) : lastBotMessage && lastBotMessage.activity.length > 0 ? (
           <motion.div
             key={lastBotMessage.id}

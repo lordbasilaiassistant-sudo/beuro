@@ -309,9 +309,13 @@ export function ChatPanel({
   const busy = store.workingBotIds.length > 0
   const primaryBot = threadBots[0]
 
+  // We do not know what the Bot is doing until the server tells us, so we say
+  // only what is true: it is working, and for how long.
   const lastStepFor = (botId: string): string | undefined => {
-    const log = store.pendingStepsByBot[botId]
-    return log && log.length > 0 ? log[log.length - 1].text : undefined
+    const since = store.workingSinceByBot[botId]
+    if (!since) return undefined
+    const secs = Math.max(0, Math.floor((Date.now() - since) / 1000))
+    return secs >= 1 ? `Working… ${secs}s` : 'Working…'
   }
 
   const openBotDm = (bot: Bot) => {
