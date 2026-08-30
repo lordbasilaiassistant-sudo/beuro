@@ -36,15 +36,32 @@ export function verifyPassword(password: string, stored: string): boolean {
 // ---------- session signing ----------
 
 /**
- * The signing secret: env AUTH_SECRET if set, otherwise a random key
- * generated once and persisted next to the database.
+ * Random per-process key, used only when there is nowhere to persist one.
+ * Regenerated on restart, so sessions do not survive a redeploy — which is the
+ * correct trade: a session that breaks is an inconvenience, a session anyone
+ * can forge is a breach.
+ */
+let ephemeralSecret: string | null = null
+
+/**
+ * The signing secret, in order of preference:
+ *   1. AUTH_SECRET from the environment — the only correct answer in production.
+ *   2. A key persisted beside the database — developer convenience on a normal
+ *      filesystem, so logins survive a dev-server restart.
+ *   3. A random per-process key, with a loud warning.
+ *
+ * ⚠️ This used to fall back to a HARDCODED string when the filesystem was not
+ * writable. That is precisely the condition on a serverless or edge host — so
+ * the one place you would actually deploy silently signed every session with a
+ * constant published in a public repo, and anyone could mint a valid cookie for
+ * any instance. Never reintroduce a constant here.
  */
 function getSecret(): string {
-  if (process.env.AUTH_SECRET && process.env.AUTH_SECRET.length >= 16) {
-    return process.env.AUTH_SECRET
-  }
-  const secretPath = path.join(process.cwd(), 'db', 'auth-secret.key')
+  const fromEnv = process.env.AUTH_SECRET
+  if (fromEnv && fromEnv.length >= 16) return fromEnv
+
   try {
+    const secretPath = path.join(process.cwd(), 'db', 'auth-secret.key')
     if (existsSync(secretPath)) {
       const existing = readFileSync(secretPath, 'utf8').trim()
       if (existing.length >= 16) return existing
@@ -53,8 +70,16 @@ function getSecret(): string {
     writeFileSync(secretPath, secret, { mode: 0o600 })
     return secret
   } catch {
-    // Read-only FS fallback — same-process consistency is still enforced.
-    return 'grokbok-fallback-secret-do-not-use-in-prod'
+    // No writable filesystem (serverless, edge, read-only container).
+    if (!ephemeralSecret) {
+      ephemeralSecret = randomBytes(32).toString('hex')
+      console.warn(
+        '[auth] No AUTH_SECRET set and no writable filesystem — signing sessions with a ' +
+          'random per-process key. Sessions will not survive a restart and will not work ' +
+          'across instances. Set AUTH_SECRET in production.',
+      )
+    }
+    return ephemeralSecret
   }
 }
 

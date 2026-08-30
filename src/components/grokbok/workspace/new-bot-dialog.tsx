@@ -105,7 +105,7 @@ export function NewBotDialog({
         <DialogHeader>
           <DialogTitle className="text-sm">Hire a new Bot</DialogTitle>
           <DialogDescription className="text-xs text-zinc-500">
-            Bots get their own Computer, memory and routines — and work 24/7 like a teammate.
+            Bots get memory, routines, and a log of every page they actually opened.
           </DialogDescription>
         </DialogHeader>
 

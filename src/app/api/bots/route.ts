@@ -23,7 +23,7 @@ async function generatePersona(
 ): Promise<string> {
   try {
     const raw = await callLLM(
-      'You write short bot personas for Beuro, a product where AI teammates do real work on their own computers. Output ONLY the persona text — no quotes, no preamble, no markdown.',
+      'You write short bot personas for Beuro, where AI teammates research on the live web and report what they actually found, with sources. Output ONLY the persona text — no quotes, no preamble, no markdown.',
       `Write a 1-2 sentence persona for an AI teammate named "${name}" whose role is "${role}", working for ${ownerName}. Cover what it does day-to-day and how it communicates.`,
       15000,
     )

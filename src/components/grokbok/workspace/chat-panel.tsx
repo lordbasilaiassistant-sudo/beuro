@@ -396,7 +396,7 @@ export function ChatPanel({
                         : `Start of your chat with ${primaryBot?.name ?? 'your bot'}.`}
                     </p>
                     <p className="mt-1 text-xs text-zinc-600">
-                      Give real work — bots run on their own Computer and check in when they need
+                      Give real work — bots search, read real pages, and check in when they need
                       you.
                     </p>
                   </div>
@@ -529,7 +529,7 @@ export function ChatPanel({
                   <div className="min-w-0 flex-1">
                     <p className="text-sm text-zinc-200">Hire your first Bot</p>
                     <p className="mt-0.5 text-xs leading-relaxed text-zinc-500">
-                      Sales, support, ops — pick a role, it gets its own Computer and works 24/7.
+                      Research, triage, drafting — pick a role and it starts citing its sources.
                     </p>
                     {onOpenNewBot && (
                       <Button
@@ -565,7 +565,7 @@ export function ChatPanel({
                   Select a Bot or start a group chat
                 </p>
                 <p className="mt-1 text-xs leading-relaxed text-zinc-500">
-                  Your AI teammates work 24/7 on their own Computer — message them like
+                  Your AI teammates search the live web and show their sources — message them like
                   colleagues.
                 </p>
               </div>

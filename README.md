@@ -1,7 +1,10 @@
 # Beuro
 
-AI teammates that do real work on their own computers — hire a bot, give it a
-job, watch it think, sign in, read, and write its way through the task.
+AI teammates that show their work. Hire a bot, give it a job, and watch it
+actually search the live web and open real pages — with every step in its log
+written by the tool that ran it, and a source you can click.
+
+No API key. No account. It runs on your machine.
 
 Next.js 16 · React 19 · Prisma/SQLite · Tailwind v4 · shadcn/ui.
 
@@ -147,6 +150,19 @@ Being explicit, because the whole point is not overclaiming:
 
 ---
 
+## Why there is no hosted demo
+
+Beuro is self-host-first, and that is a measurement rather than a preference.
+
+The default model rail is shared and **serial**. Measured against the live
+deployment, four concurrent requests return two successes and two failures, and
+a burst rate-limits the whole deployment for over a minute across every
+endpoint. A public demo is by definition concurrent, so the third person to
+click at the same moment would watch it fail — the demo would misrepresent the
+product to most people who tried it.
+
+Running it yourself gives you the rail to yourself. It takes about a minute:
+
 ## Run it
 
 ```bash
@@ -190,7 +206,12 @@ are not needed to run Beuro locally.
 
 - Passwords are scrypt with a per-user random salt; sessions are HMAC-SHA256 in
   an httpOnly cookie. No auth dependency, no plaintext secrets in the DB.
-- `AUTH_SECRET` is read from env when it is ≥16 chars, otherwise a random key is
-  generated once and persisted beside the database. **Set it in production.**
+- **Set `AUTH_SECRET` in production.** It is read from env first; on a normal
+  filesystem it otherwise persists a generated key beside the database. Where
+  there is no writable filesystem (serverless, edge, read-only container) it
+  signs with a random per-process key and warns — sessions then break on
+  restart and across instances, which is deliberate. It used to fall back to a
+  hardcoded constant in exactly that situation, which meant anyone could forge
+  a session on any deployed instance.
 - Free-model output is fine for drafts, triage and extraction. It should never
   be the gate on money- or customer-facing decisions.
