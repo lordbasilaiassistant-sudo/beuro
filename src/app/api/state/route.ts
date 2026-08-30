@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — GET /api/state
+// Beuro — GET /api/state
 // Returns the signed-in user's full workspace: their bots,
 // threads and tool connections. Every new account starts EMPTY.
 // ============================================================

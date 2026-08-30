@@ -82,7 +82,7 @@ export function Features() {
           className="max-w-3xl"
         >
           <motion.p className="text-xs font-medium uppercase tracking-[0.22em] text-zinc-500" variants={item}>
-            Why GrokBok is different
+            Why Beuro is different
           </motion.p>
           <motion.h2
             id="features-heading"

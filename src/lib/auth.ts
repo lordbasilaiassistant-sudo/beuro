@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — auth helpers (BACKEND ONLY)
+// Beuro — auth helpers (BACKEND ONLY)
 // Passwords: node:crypto scrypt with per-user random salt.
 // Sessions: HMAC-SHA256 signed token in an httpOnly cookie.
 // No external dependencies, no plaintext secrets in the DB.

@@ -108,7 +108,7 @@ function LiveActivityCard({
   }, [workingSince])
 
   return (
-    <section className="rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs">
+    <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs">
       <div className="flex items-center justify-between">
         <span className="flex items-center gap-1.5 text-[10px] font-medium uppercase tracking-widest text-zinc-500">
           {working ? (
@@ -131,7 +131,7 @@ function LiveActivityCard({
       <div className="mt-2 flex flex-col gap-1">
         {working ? (
           <div className="flex flex-col gap-1">
-            <div className="flex items-center gap-2 text-zinc-300">
+            <div className="flex min-w-0 items-center gap-2 text-zinc-300">
               <span className="text-zinc-600">›</span>
               <span>
                 Working
@@ -166,7 +166,7 @@ function LiveActivityCard({
                   key={`${i}-${step.text}`}
                   variants={{ hidden: { opacity: 0, y: 4 }, show: { opacity: 1, y: 0 } }}
                   className={cn(
-                    'flex items-start gap-2',
+                    'flex min-w-0 items-start gap-2',
                     !real && 'italic text-zinc-600',
                     real && (step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-300'),
                   )}
@@ -181,10 +181,10 @@ function LiveActivityCard({
                         : 'text-zinc-700',
                     )}
                   />
-                  <span className="min-w-0">
+                  <span className="min-w-0 flex-1 break-words">
                     {step.text}
                     {step.evidence && step.evidence.length > 0 && (
-                      <span className="mt-1 flex flex-col gap-0.5">
+                      <span className="mt-1 flex min-w-0 flex-col gap-0.5">
                         {step.evidence.map((e) => (
                           <a
                             key={e.href}
@@ -192,7 +192,7 @@ function LiveActivityCard({
                             target="_blank"
                             rel="noopener noreferrer"
                             title={e.href}
-                            className="truncate text-[10px] text-zinc-500 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline"
+                            className="block max-w-full truncate text-[10px] text-zinc-500 underline-offset-2 transition-colors hover:text-zinc-200 hover:underline"
                           >
                             › {e.href.replace(/^https?:\/\//, '')}
                           </a>

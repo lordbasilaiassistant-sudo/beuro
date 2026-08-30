@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — POST /api/routines/run
+// Beuro — POST /api/routines/run
 // A bot executes one of its routines "now" and posts a run report
 // (activity feed + reply) into its DM thread. Owner-scoped.
 // ============================================================
@@ -47,9 +47,10 @@ async function generateRunReport(
   steps: string[],
 ): Promise<RunReport> {
   const system =
-    `You are ${bot.name}, a ${bot.role} AI teammate in GrokBok. Persona: ${bot.persona}. ` +
+    `You are ${bot.name}, a ${bot.role} AI teammate in Beuro. Persona: ${bot.persona}. ` +
     `${ownerContext} ` +
-    `You have your own cloud computer, sign into the user's tools, and work end-to-end. ` +
+    `You can search the live web and open real public web pages. You cannot sign into anything, ` +
+    `send email, or reach the user's private systems — say so plainly rather than describing yourself doing it. ` +
     `You report like a competent colleague: concise, specific, friendly. Never mention you are an LLM.`
 
   const user = `You just executed your scheduled routine "${routineTitle}" (schedule: ${schedule}). Routine steps:

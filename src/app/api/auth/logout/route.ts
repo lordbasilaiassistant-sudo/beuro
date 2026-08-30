@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — POST /api/auth/logout
+// Beuro — POST /api/auth/logout
 // Clears the session cookie. Idempotent.
 // ============================================================
 

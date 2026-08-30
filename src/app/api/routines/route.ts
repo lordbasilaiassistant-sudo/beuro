@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — /api/routines
+// Beuro — /api/routines
 // POST: LLM turns a free-form description into { title, schedule, steps }
 // PATCH: enable/disable a routine
 // Both scoped to the signed-in user's bots.
@@ -43,7 +43,7 @@ async function generateRoutinePlan(
 ): Promise<RoutinePlan> {
   try {
     const raw = await callLLM(
-      'You design recurring workflows for AI teammates in GrokBok. Respond with STRICT JSON only — no markdown, no commentary.',
+      'You design recurring workflows for AI teammates in Beuro. Respond with STRICT JSON only — no markdown, no commentary.',
       `Turn this description into a routine the bot "${botName}" can run on a schedule. Description: "${description}".
 
 Respond exactly in this shape:

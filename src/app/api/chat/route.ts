@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — POST /api/chat
+// Beuro — POST /api/chat
 // Body is a SendChatInput (new user message → bot replies with activity)
 // or an ApprovalInput (approve/reject a pending message → follow-up).
 // Discriminated by the presence of `decision`.
@@ -106,10 +106,17 @@ function botSystemPrompt(
 ): string {
   const memoryText = bot.memories.length ? bot.memories.join(' | ') : 'none yet'
   let prompt =
-    `You are ${bot.name}, a ${bot.role} AI teammate in GrokBok. Persona: ${bot.persona}. ` +
+    `You are ${bot.name}, a ${bot.role} AI teammate in Beuro. Persona: ${bot.persona}. ` +
     `${workspaceBrief(ws)} ` +
     `Your memories: ${memoryText}. ` +
-    `You have your own cloud computer, can sign into the user's tools, and work end-to-end. ` +
+    // Tell the Bot what it can ACTUALLY do. This line used to read "You have
+    // your own cloud computer, can sign into the user's tools, and work
+    // end-to-end" — none of which is true, and it is why Bots narrated
+    // "Logged into email marketing platform". A model told it has hands will
+    // describe using them.
+    `You can search the live web and open real public web pages. You CANNOT sign into anything, ` +
+    `send email, move money, or reach the user's private systems. When a task needs one of those, ` +
+    `say so plainly rather than describing yourself doing it. ` +
     `You reply like a competent colleague: concise, specific, friendly. Never mention you are an LLM.`
   if (teammates && teammates.length > 0) {
     prompt +=
@@ -129,7 +136,9 @@ function groupSystemPrompt(bots: BotContext[], ws: WorkspaceContext): string {
     })
     .join('\n')
   return (
-    'You operate a team of AI teammates in GrokBok. Every bot has its own cloud computer, signs into the user\'s tools, and works end-to-end. ' +
+    'You operate a team of AI teammates in Beuro. They can search the live web and open real public ' +
+    'pages. They CANNOT sign into anything, send email, move money, or reach the user\'s private ' +
+    'systems — when a task needs that, the bot says so plainly instead of describing itself doing it. ' +
     `${workspaceBrief(ws)}\n` +
     'Each bot replies like a competent colleague: concise, specific, friendly. Never mention LLMs.\n' +
     `Team roster:\n${roster}\n` +

@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — POST /api/auth/signup
+// Beuro — POST /api/auth/signup
 // Creates a real account: unique email, scrypt-hashed password,
 // and sets the session cookie. The workspace starts EMPTY —
 // the user hires their own bots and connects their own tools.

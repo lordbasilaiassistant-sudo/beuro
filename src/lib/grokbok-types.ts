@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok clone — SHARED API CONTRACT & TYPES
+// Beuro — SHARED API CONTRACT & TYPES
 // Every agent MUST import types from this file.
 // Do not redefine these shapes elsewhere.
 // ============================================================

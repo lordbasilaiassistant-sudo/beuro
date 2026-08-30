@@ -102,13 +102,13 @@ export function Workspace({
         <button
           type="button"
           onClick={onHome}
-          aria-label="GrokBok home"
+          aria-label="Beuro home"
           className="flex cursor-pointer items-center gap-2 rounded-md px-1.5 py-1 transition-colors hover:bg-zinc-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-zinc-600"
         >
           <span className="flex size-5 items-center justify-center rounded-[5px] bg-white text-[11px] font-bold text-black">
             G
           </span>
-          <span className="text-sm font-semibold tracking-tight text-zinc-100">GrokBok</span>
+          <span className="text-sm font-semibold tracking-tight text-zinc-100">Beuro</span>
         </button>
         <Badge
           variant="outline"

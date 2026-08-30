@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok clone — Prisma row → contract type mappers
+// Beuro clone — Prisma row → contract type mappers
 // All dates become ISO strings; JSON string columns are parsed safely.
 // ============================================================
 

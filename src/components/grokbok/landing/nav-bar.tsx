@@ -37,7 +37,7 @@ export function NavBar({
       >
         <a
           href="#"
-          aria-label="GrokBok home"
+          aria-label="Beuro home"
           className="flex items-center gap-2.5 rounded-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-zinc-500"
         >
           <span
@@ -47,7 +47,7 @@ export function NavBar({
             <span className="size-2 rounded-full bg-black" />
           </span>
           <span className="text-[15px] font-semibold tracking-tight text-zinc-100">
-            GrokBok
+            Beuro
           </span>
         </a>
 

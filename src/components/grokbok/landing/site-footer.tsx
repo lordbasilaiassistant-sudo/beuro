@@ -46,7 +46,7 @@ export function SiteFooter() {
                 <span className="size-2 rounded-full bg-black" />
               </span>
               <span className="text-[15px] font-semibold tracking-tight text-zinc-100">
-                GrokBok
+                Beuro
               </span>
             </a>
             <p className="mt-4 text-sm leading-relaxed text-zinc-500">

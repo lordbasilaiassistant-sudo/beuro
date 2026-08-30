@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — /api/connections
+// Beuro — /api/connections
 // The user connects their real tools (API keys, webhooks, email
 // accounts, databases) so bots can work with them.
 // GET: list (values masked) · POST: add · DELETE ?id=: remove

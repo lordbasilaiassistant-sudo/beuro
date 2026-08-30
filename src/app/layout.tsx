@@ -14,18 +14,22 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "GrokBok — AI teammates that finish the work",
+  title: "Beuro — AI teammates that show their work",
   description:
     "Beuro is your team of AI agents. They search the live web, open real pages, and cite every source — so you can check the work instead of trusting it.",
-  keywords: ["GrokBok", "AI teammates", "AI agents", "bots", "automation"],
+  keywords: ["Beuro", "AI teammates", "AI agents", "open source", "automation"],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    // The scaffold shipped this pointing at https://z-cdn.chatglm.cn — a
+    // third-party CDN from the sandbox this project was built in. It failed to
+    // load, it is not our mark, and it made every visitor's browser call out
+    // to someone else's infrastructure. Serve our own from /public instead.
+    icon: "/logo.svg",
   },
   openGraph: {
-    title: "GrokBok — AI teammates that finish the work",
+    title: "Beuro — AI teammates that show their work",
     description:
-      "AI teammates you can give real work to. Bots sign in to your tools, use them just like you do, and come back with finished work.",
-    siteName: "GrokBok",
+      "AI teammates you can give real work to. They search the live web, open real pages, and cite every source — so you can check the work instead of trusting it.",
+    siteName: "Beuro",
     type: "website",
   },
 };

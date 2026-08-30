@@ -1,7 +1,7 @@
 'use client'
 
 // ============================================================
-// GrokBok workspace state hook (zustand singleton).
+// Beuro workspace state hook (zustand singleton).
 // Owns: AppState fetch, thread selection, optimistic messaging,
 // approval decisions, bot/thread/routine creation, and the
 // simulated "Computer" activity ticker that keeps the UI alive.
@@ -155,7 +155,7 @@ const useGrokbokBase = create<GrokbokState>()((set, get) => {
       try {
         const data = await apiJson<AuthResponse>('/api/auth/signup', input)
         set({ me: data.user, state: null, activeThreadId: null })
-        toast.success(`Welcome to GrokBok, ${data.user.name.split(' ')[0]}`)
+        toast.success(`Welcome to Beuro, ${data.user.name.split(' ')[0]}`)
         return true
       } catch (err) {
         toast.error(err instanceof Error ? err.message : 'Could not create the account')

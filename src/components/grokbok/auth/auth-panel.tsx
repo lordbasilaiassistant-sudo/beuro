@@ -48,7 +48,7 @@ export function AuthPanel({
           >
             <span className="size-2.5 rounded-full bg-black" />
           </span>
-          <span className="text-lg font-semibold tracking-tight">GrokBok</span>
+          <span className="text-lg font-semibold tracking-tight">Beuro</span>
         </div>
 
         <h1 className="text-2xl font-semibold tracking-tight">
@@ -257,7 +257,7 @@ function SigninForm({
         Sign in
       </Button>
       <p className="text-center text-xs text-zinc-500">
-        New to GrokBok?{' '}
+        New to Beuro?{' '}
         <button
           type="button"
           onClick={onSwitch}

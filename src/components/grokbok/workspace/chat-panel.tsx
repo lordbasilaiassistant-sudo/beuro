@@ -70,7 +70,7 @@ function ActivityStrip({ steps }: { steps: ActivityStep[] }) {
           <span
             key={`${i}-${step.text}`}
             className={cn(
-              'flex items-start gap-2 text-xs leading-relaxed',
+              'flex min-w-0 items-start gap-2 text-xs leading-relaxed',
               !real && 'italic text-zinc-500',
               real && (step.kind === 'done' ? 'text-emerald-300/90' : 'text-zinc-300'),
             )}
@@ -81,7 +81,7 @@ function ActivityStrip({ steps }: { steps: ActivityStep[] }) {
                 real ? (step.kind === 'done' ? 'text-emerald-400' : 'text-zinc-400') : 'text-zinc-600',
               )}
             />
-            <span className="min-w-0">
+            <span className="min-w-0 flex-1 break-words">
               {step.text}
               {step.evidence && step.evidence.length > 0 && (
                 <span className="mt-1 flex flex-wrap gap-x-2 gap-y-1">
@@ -385,7 +385,7 @@ export function ChatPanel({
             )}
           </>
         ) : (
-          <h2 className="text-sm font-semibold text-zinc-300">GrokBok</h2>
+          <h2 className="text-sm font-semibold text-zinc-300">Beuro</h2>
         )}
       </header>
 

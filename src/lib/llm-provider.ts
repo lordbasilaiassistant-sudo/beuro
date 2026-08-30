@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — LLM provider layer (BACKEND ONLY)
+// Beuro — LLM provider layer (BACKEND ONLY)
 //
 // Replaces the sandbox-only `z-ai-web-dev-sdk` with plain fetch, so this
 // repo runs anywhere: a laptop, a VPS, a container — with NO API key at all

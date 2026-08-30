@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — POST /api/auth/login
+// Beuro — POST /api/auth/login
 // Verifies email + password (scrypt) and sets the session cookie.
 // ============================================================
 

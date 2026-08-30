@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — /api/bots
+// Beuro — /api/bots
 // POST: hire a bot (LLM generates the persona when absent) — owned
 //       by the signed-in user, starts idle with no fake data.
 // DELETE ?id=: fire a bot (memories + routines cascade) — owner only.
@@ -23,7 +23,7 @@ async function generatePersona(
 ): Promise<string> {
   try {
     const raw = await callLLM(
-      'You write short bot personas for GrokBok, a product where AI teammates do real work on their own computers. Output ONLY the persona text — no quotes, no preamble, no markdown.',
+      'You write short bot personas for Beuro, a product where AI teammates do real work on their own computers. Output ONLY the persona text — no quotes, no preamble, no markdown.',
       `Write a 1-2 sentence persona for an AI teammate named "${name}" whose role is "${role}", working for ${ownerName}. Cover what it does day-to-day and how it communicates.`,
       15000,
     )

@@ -192,7 +192,7 @@ export function NewBotDialog({
               className="min-h-20 resize-none border-zinc-800 bg-zinc-900/60 text-sm text-zinc-100 placeholder:text-zinc-600 focus-visible:border-zinc-600 focus-visible:ring-zinc-600/40"
             />
             <p className="text-[11px] text-zinc-600">
-              Leave blank and GrokBok will figure them out.
+              Leave blank and Beuro will figure them out.
             </p>
           </div>
         </div>

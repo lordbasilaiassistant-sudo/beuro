@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — /api/threads
+// Beuro — /api/threads
 // POST: create a thread (1 bot = DM, 2+ bots = group chat) — all
 //       member bots must belong to the signed-in user.
 // DELETE ?id=: delete a thread (messages cascade) — owner only.

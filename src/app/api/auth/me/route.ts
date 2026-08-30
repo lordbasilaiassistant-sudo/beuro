@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — GET /api/auth/me
+// Beuro — GET /api/auth/me
 // Returns the signed-in user, or { user: null } when signed out.
 // (Sign-out lives at POST /api/auth/logout.)
 // ============================================================

@@ -17,7 +17,7 @@ interface Plan {
 }
 
 const SUBHEADLINE =
-  "Every plan includes GrokBok’s own computer, sign-in to your tools, routines on a schedule, and weekly usage.";
+  "Every plan includes Beuro’s own computer, sign-in to your tools, routines on a schedule, and weekly usage.";
 
 const PLANS: Plan[] = [
   {
@@ -26,10 +26,10 @@ const PLANS: Plan[] = [
     per: "/mo",
     blurb: "For individuals delegating their first lane.",
     features: [
-      "GrokBok’s own computer",
+      "Beuro’s own computer",
       "Signs into your tools",
       "Routines on a schedule",
-      "Weekly GrokBok usage included",
+      "Weekly Beuro usage included",
       "Work anywhere: desktop, mobile, and more",
     ],
     cta: "Get started",
@@ -39,7 +39,7 @@ const PLANS: Plan[] = [
     name: "Plus",
     price: "$30",
     per: "/mo",
-    blurb: "For power users who live in GrokBok all day.",
+    blurb: "For power users who live in Beuro all day.",
     features: [
       "Everything in Pro",
       "Higher rate limits across all features",

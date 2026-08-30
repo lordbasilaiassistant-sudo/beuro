@@ -1,5 +1,5 @@
 // ============================================================
-// GrokBok — shared LLM helpers (BACKEND ONLY)
+// Beuro — shared LLM helpers (BACKEND ONLY)
 // Timeout + robust JSON parsing on top of the pluggable provider in
 // `llm-provider.ts` (keyless free rail by default, or any
 // OpenAI-compatible endpoint). No vendor SDK, no API key required.
