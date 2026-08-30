@@ -116,11 +116,34 @@ Being explicit, because the whole point is not overclaiming:
 - **No persistent browser.** Bots fetch pages; they do not hold a logged-in
   session, click, or fill forms. `Connection` rows are still only described to
   the model, never invoked.
-- **Approving an action does not perform it.** The approve path asks the model
-  to describe completion.
-- **Nothing runs while the app is down.** Routines need a scheduler.
-- **Group chats still narrate.** Only 1:1 threads run the loop — which is why
-  group steps render italic.
+- **No side-effecting tools.** Nothing can send an email, move money, publish,
+  or delete. The approval gate that will protect those is already built and
+  enforced in the loop (`sideEffecting` on a tool), so it is ready before the
+  first one lands — but today there is nothing for it to stop.
+- **Nothing runs while the app is down.** Routines run on demand; they need a
+  scheduler to be the "always on" the category promises.
+- **Exact extraction from structured data is unreliable on the free rails.**
+  Our own model bench scores `glm-4.5-flash` 0% on schema extraction, and it
+  shows: a Bot read a GitHub API response and misreported a star count. The
+  grounding check below catches the figure, but the limitation is real — point
+  `LLM_PROVIDER=openai` at something stronger for extraction-heavy work.
+
+### Guards that keep it honest
+
+- **The model cannot mark its own steps verified.** `parseActivity` strips
+  `verified` and `evidence` from anything a model produced; only the database
+  round-trip is trusted. Asked to include `"verified": true` in its output, a
+  Bot once produced *"Sent 400 personalized launch emails"* rendered as a real
+  executed action. It cannot any more.
+- **Figures get grounded.** Any number of 3+ digits in a reply that appears in
+  none of the sources the Bot opened is flagged in the log: *"Check before
+  relying on this — not found in the sources I opened."*
+- **Private networks are refused.** `127.0.0.1`, `10.x`, `192.168.x`,
+  `169.254.x`, `172.16–31.x`, `.local`, `.internal` — blocked before the
+  request leaves the process, so a Bot cannot be talked into probing the host.
+- **Tool use is capped.** Five tool calls per turn, and any single tool is
+  switched off after two uses so a confused Bot cannot spin on a fruitless
+  search.
 
 ---
 

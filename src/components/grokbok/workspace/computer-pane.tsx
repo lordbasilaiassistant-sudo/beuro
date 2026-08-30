@@ -52,16 +52,9 @@ import { Switch } from '@/components/ui/switch'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActivityKind, ActivityStep, Bot, BotStatus, Routine } from '@/lib/grokbok-types'
 import { cn } from '@/lib/utils'
+import { KIND_ICON } from './activity-icons'
 import type { GrokbokStore } from './use-grokbok'
 
-const KIND_ICON: Record<ActivityKind, LucideIcon> = {
-  signin: KeyRound,
-  think: Brain,
-  read: BookOpen,
-  write: PenLine,
-  tool: Wrench,
-  done: CheckCircle2,
-}
 
 function relTime(iso: string): string {
   try {
@@ -93,19 +86,18 @@ function LiveActivityCard({
   // Elapsed time is the only thing we truthfully know mid-turn, so it is the
   // only thing the terminal shows. Real steps arrive when the turn lands.
   const workingSince = store.workingSinceByBot[botId]
-  const [elapsed, setElapsed] = useState(0)
+  // Tick a clock and derive elapsed during render, rather than writing elapsed
+  // into state from inside the effect — the latter sets state synchronously on
+  // every mount and cascades renders (react-hooks/set-state-in-effect).
+  const [now, setNow] = useState(() => Date.now())
 
   useEffect(() => {
-    if (!workingSince) {
-      setElapsed(0)
-      return
-    }
-    setElapsed(Math.floor((Date.now() - workingSince) / 1000))
-    const t = setInterval(() => {
-      setElapsed(Math.floor((Date.now() - workingSince) / 1000))
-    }, 1000)
+    if (!workingSince) return
+    const t = setInterval(() => setNow(Date.now()), 1000)
     return () => clearInterval(t)
   }, [workingSince])
+
+  const elapsed = workingSince ? Math.max(0, Math.floor((Math.max(now, workingSince) - workingSince) / 1000)) : 0
 
   return (
     <section className="overflow-hidden rounded-xl border border-zinc-800 bg-zinc-950 p-3 font-mono text-xs">

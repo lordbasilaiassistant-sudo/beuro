@@ -31,16 +31,9 @@ import { ScrollArea } from '@/components/ui/scroll-area'
 import { Textarea } from '@/components/ui/textarea'
 import type { ActivityKind, ActivityStep, Bot, ChatMessage } from '@/lib/grokbok-types'
 import { cn } from '@/lib/utils'
+import { KIND_ICON } from './activity-icons'
 import type { GrokbokStore } from './use-grokbok'
 
-const KIND_ICON: Record<ActivityKind, LucideIcon> = {
-  signin: KeyRound,
-  think: Brain,
-  read: BookOpen,
-  write: PenLine,
-  tool: Wrench,
-  done: CheckCircle2,
-}
 
 const messageEntrance = {
   initial: { opacity: 0, y: 8 },

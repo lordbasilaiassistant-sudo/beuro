@@ -60,3 +60,7 @@ tool-results/
 .zscripts/dev.pid
 worklog.md
 db/auth-secret.key
+
+# z.ai sandbox scaffolding (paths point at /home/z)
+.zscripts/
+Caddyfile

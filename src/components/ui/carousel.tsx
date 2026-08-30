@@ -95,6 +95,11 @@ function Carousel({
 
   React.useEffect(() => {
     if (!api) return
+    // Reading the carousel's initial position is a genuine external-system
+    // sync: embla owns this state and only reports it once the API exists.
+    // The alternative (deriving it during render) would mean calling into
+    // embla while rendering, which is worse. Stock shadcn code, kept as-is.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     onSelect(api)
     api.on("reInit", onSelect)
     api.on("select", onSelect)

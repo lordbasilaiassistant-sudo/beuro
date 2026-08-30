@@ -124,6 +124,13 @@ export async function POST(req: Request) {
       }))
 
     const steps = parseJsonArray<string>(routine.steps)
+
+    // This route reset the bot to 'idle' at the end but never marked it
+    // 'working' at the start, so a routine run showed idle in the database for
+    // its whole duration while the client faked a working badge locally. The
+    // chat route has always done this correctly; now both agree.
+    await db.bot.update({ where: { id: bot.id }, data: { status: 'working' } })
+
     const report = await generateRunReport(
       { name: bot.name, role: bot.role, persona: bot.persona },
       ownerContext,
